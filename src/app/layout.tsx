@@ -15,7 +15,6 @@ const montserrat = Montserrat({
 export const metadata: Metadata = {
   title: { default: "Aprova Luvi", template: "%s · Aprova Luvi" },
   description: "Aprovação de materiais criativos da Luvi Company.",
-  icons: { icon: "/brand/favicon.png" },
   robots: { index: false, follow: false },
 };
 
