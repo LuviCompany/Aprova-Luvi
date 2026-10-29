@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
-import { Ban, Clock, Lock, ShieldX } from "lucide-react";
+import Link from "next/link";
+import { Ban, Clock, Home, Lock, ShieldX } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { QuickApproval } from "@/components/quick-approval";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { LINK_STATE_LABEL, clientById, maskEmail, projectById, resolveLinkState } from "@/lib/domain";
 import { NOW, approvalLinks, clients, comments, decisions, materials, projects } from "@/lib/mock/data";
@@ -36,6 +38,11 @@ function Frame({ children }: { children: React.ReactNode }) {
         <Logo size="sm" />
       </header>
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">{children}</main>
+      <div className="flex justify-center px-4 pb-4">
+        <Button variant="outline" render={<Link href="/" />}>
+          <Home data-icon="inline-start" /> Voltar ao início
+        </Button>
+      </div>
       <footer className="py-6 text-center text-xs text-muted-foreground">Aprova Luvi · Luvi Company</footer>
     </div>
   );

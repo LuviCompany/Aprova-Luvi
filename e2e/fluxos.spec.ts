@@ -65,6 +65,7 @@ test.describe("portal do cliente", () => {
 test.describe("aprovação rápida por link", () => {
   test("exige o código e conclui a aprovação", async ({ page }) => {
     await page.goto("/aprovar/demo");
+    await expect(page.getByRole("link", { name: "Voltar ao início" })).toHaveAttribute("href", "/");
     await expect(page.getByText("ma***@casaaurora.example")).toBeVisible();
 
     await page.getByLabel("Código de verificação").fill("000000");
@@ -88,6 +89,7 @@ test.describe("aprovação rápida por link", () => {
       await page.goto(`/aprovar/${token}`);
       await expect(page.getByRole("heading", { name: titulo })).toBeVisible();
       await expect(page.getByLabel("Código de verificação")).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Voltar ao início" })).toBeVisible();
     });
   }
 });
