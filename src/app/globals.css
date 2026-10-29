@@ -1,26 +1,188 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * Design System Luvi — tokens derivados do site institucional (Site-Luvi).
+ * Tema único e escuro: preto #0A0A0A, grafite #1A1A1A/#2A2A2A, branco e laranja #FF3B00.
+ */
 
 @theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-ink: var(--ink);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  color-scheme: dark;
+
+  --ink: #0a0a0a;
+  --surface: #1a1a1a;
+  --surface-2: #2a2a2a;
+
+  --background: #0a0a0a;
+  --foreground: #f5f5f5;
+  --card: #141414;
+  --card-foreground: #f5f5f5;
+  --popover: #1a1a1a;
+  --popover-foreground: #f5f5f5;
+  --primary: #ff3b00;
+  --primary-dark: #cc2f00;
+  --primary-foreground: #ffffff;
+  --secondary: #2a2a2a;
+  --secondary-foreground: #f5f5f5;
+  --muted: #1a1a1a;
+  --muted-foreground: #9ca3af;
+  --accent: #2a2a2a;
+  --accent-foreground: #ffffff;
+  --destructive: #f87171;
+  --border: rgb(255 255 255 / 0.1);
+  --input: rgb(255 255 255 / 0.14);
+  --ring: #ff3b00;
+
+  --success: #34d399;
+  --warning: #fbbf24;
+  --info: #60a5fa;
+
+  --chart-1: #ff3b00;
+  --chart-2: #fbbf24;
+  --chart-3: #34d399;
+  --chart-4: #60a5fa;
+  --chart-5: #9ca3af;
+
+  --sidebar: #0f0f0f;
+  --sidebar-foreground: #e5e5e5;
+  --sidebar-primary: #ff3b00;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1f1f1f;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgb(255 255 255 / 0.08);
+  --sidebar-ring: #ff3b00;
+
+  --radius: 0.75rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-heading tracking-tight;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Brilho ambiente laranja nas laterais (mesmo recurso do site institucional). */
+.luvi-glow {
+  position: relative;
+  isolation: isolate;
+}
+.luvi-glow::before,
+.luvi-glow::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  z-index: -1;
+  width: 900px;
+  height: 900px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: radial-gradient(circle, rgb(255 59 0 / 0.16) 0%, transparent 70%);
+  pointer-events: none;
+}
+.luvi-glow::before {
+  left: -450px;
+}
+.luvi-glow::after {
+  right: -450px;
+}
+@media (max-width: 767px) {
+  .luvi-glow::before,
+  .luvi-glow::after {
+    display: none;
+  }
+}
+
+/* Link de pular para o conteúdo (acessibilidade). */
+.skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: -4rem;
+  z-index: 100;
+  border-radius: 0.5rem;
+  background: var(--primary);
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  color: var(--primary-foreground);
+  transition: top 0.15s ease;
+}
+.skip-link:focus {
+  top: 0.75rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
