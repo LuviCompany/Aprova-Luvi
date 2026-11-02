@@ -54,13 +54,15 @@ export type TestDb = PGlite & {
   asAnon<T>(fn: () => Promise<T>): Promise<T>;
 };
 
-export async function createTestDb(): Promise<TestDb> {
+export async function createTestDb(options: { migrate?: boolean } = {}): Promise<TestDb> {
   const db = new PGlite() as TestDb;
   await db.exec(SUPABASE_STUB);
 
-  const files = readdirSync(MIGRATIONS_DIR)
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
+  const files = options.migrate === false
+    ? []
+    : readdirSync(MIGRATIONS_DIR)
+        .filter((f) => f.endsWith(".sql"))
+        .sort();
   for (const file of files) {
     try {
       await db.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));

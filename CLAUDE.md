@@ -35,6 +35,7 @@ Três ambientes:
 - **Produção atual** (`aprova.luvicompany.com.br`) roda a Fase 1 em modo demonstração. Fazer deploy desta branch **sem** configurar o Supabase e **sem** `APROVA_DEMO_MODE=true` derruba a demonstração. Nada disso foi publicado.
 - "Agora" nos dados fictícios é fixo em `NOW` (`2026-10-28T12:00:00-03:00`). Nunca usar `Date.now()` nas regras de domínio; receber a data por parâmetro.
 - Configuração do Supabase: `docs/SUPABASE.md`.
+- **Projeto Supabase de desenvolvimento/validação: "DB Aprova Luvi"** (`kswnwootbdzlhdvbhhpk`), só com `http://localhost:3000`, sem dados de clientes reais e **fora da produção**. Antes de qualquer migration: confirmar que o banco está vazio (`supabase/preflight.sql`) e que nenhum app o usa (o projeto Vercel `system` usa outro Supabase: conferir que não é este). A migration 3 revoga privilégios em todo o schema `public`, então jamais aplicá-la num projeto compartilhado.
 
 ## Stack
 
@@ -77,7 +78,7 @@ src/lib/auth/       roles, safeNextPath, senha, erros (puros) e session.ts (DAL:
 src/lib/supabase/   server.ts (usuário, RLS), admin.ts (service_role, só servidor), proxy.ts (renovação de sessão)
 src/proxy.ts        primeira barreira: anônimo em /admin, /portal, /redefinir-senha vai ao /login
 src/test/db/        harness PGlite + testes de esquema, RLS, isolamento e aprovação
-supabase/           migrations SQL, config.toml e modelos de e-mail
+supabase/           migrations SQL, preflight.sql (banco vazio?), verify.sql (auditoria pós-migration), config.toml e modelos de e-mail
 scripts/            bootstrap-admin.mjs (primeiro administrador, roda uma vez)
 docs/SUPABASE.md    passo a passo de configuração e variáveis
 e2e/                testes Playwright
