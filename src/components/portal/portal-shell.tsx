@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -114,10 +115,12 @@ export function PortalShell({ clientName, approverName, approverEmail, children 
                 <span className="hidden text-sm font-medium sm:inline">{approverName}</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-60">
-                <DropdownMenuLabel>
-                  {clientName}
-                  <span className="block text-xs font-normal text-muted-foreground">{approverEmail}</span>
-                </DropdownMenuLabel>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>
+                    {clientName}
+                    <span className="block text-xs font-normal text-muted-foreground">{approverEmail}</span>
+                  </DropdownMenuLabel>
+                </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <SignOutMenuItem />
               </DropdownMenuContent>

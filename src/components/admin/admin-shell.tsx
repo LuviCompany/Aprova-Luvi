@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -129,10 +130,12 @@ export function AdminShell({ user, children }: { user: ShellUser; children: Reac
                 <span className="hidden text-sm font-medium sm:inline">{user.name}</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuLabel>
-                  {user.email}
-                  <span className="block text-xs font-normal text-muted-foreground">{user.roleLabel}</span>
-                </DropdownMenuLabel>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>
+                    {user.email}
+                    <span className="block text-xs font-normal text-muted-foreground">{user.roleLabel}</span>
+                  </DropdownMenuLabel>
+                </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <SignOutMenuItem />
               </DropdownMenuContent>
