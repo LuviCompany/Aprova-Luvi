@@ -4,6 +4,11 @@ const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
+  // A raiz só leva ao login. Como redirecionamento de configuração (e não como página com
+  // redirect()), o Next não tenta pré-renderizar uma página que sempre lança NEXT_REDIRECT.
+  async redirects() {
+    return [{ source: "/", destination: "/login", permanent: false }];
+  },
   async headers() {
     return [
       {

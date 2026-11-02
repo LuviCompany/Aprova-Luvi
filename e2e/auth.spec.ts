@@ -70,6 +70,12 @@ test.describe("login real", () => {
   });
 });
 
+test("a raiz redireciona para o login", async ({ request }) => {
+  const res = await request.get("/", { maxRedirects: 0 });
+  expect(res.status()).toBe(307);
+  expect(new URL(res.headers()["location"], "http://localhost").pathname).toBe("/login");
+});
+
 test.describe("recuperação de senha", () => {
   test("a tela de pedido de link abre sem login e valida o e-mail", async ({ page }) => {
     await page.goto("/esqueci-senha");

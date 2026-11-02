@@ -2,7 +2,7 @@
 /**
  * Confere as variáveis de ambiente do Aprova Luvi SEM abrir conexão e SEM imprimir chaves.
  *   npm run env:check              (usa o ambiente do terminal)
- *   node --env-file=.env.local scripts/check-env.mjs
+ *   (o npm run env:check já carrega o .env.local, se existir; variáveis do terminal têm prioridade)
  */
 import { diagnoseEnv } from "../src/lib/env.ts";
 

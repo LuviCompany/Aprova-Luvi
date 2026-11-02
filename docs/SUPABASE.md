@@ -128,7 +128,7 @@ Legenda: **[Você]** age no painel/terminal; **[Eu]** executo, mediante sua auto
 13. `npm run env:check` → deve terminar com "Configuração válida" e **sem** avisos de chave legada.
 
 ### 5.6 Validar a conexão (ainda SEM migrations) — [Você]
-14. Simulação, sem rede: `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bootstrap-admin.mjs --email SEU@EMAIL --name "Seu Nome"`, com `SUPABASE_URL`, `SUPABASE_SECRET_KEY` e `APP_URL` no ambiente do terminal.
+14. Simulação, sem rede: `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/bootstrap-admin.mjs --email SEU@EMAIL --name "Seu Nome"`. As variáveis (`SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `APP_URL`) vêm do `.env.local` por `--env-file`, então a chave secreta nunca precisa ser digitada no terminal.
 15. `--check-connection` **só roda depois das migrations**: ele consulta `public.profiles`, que ainda não existe. Antes delas, valide a conexão e as chaves por `npm run dev` + a tela `/login` (deve abrir sem o aviso de "ambiente não configurado") e um login com e-mail inexistente (deve responder "E-mail ou senha incorretos.", provando que o app alcança o Auth).
 
 ### 5.7 Aplicar as migrations — [Você] (ou [Eu], se autorizado e com acesso)
