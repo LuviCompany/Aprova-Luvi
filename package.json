@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "test:e2e": "next build && playwright test",
     "check": "npm run lint && npm run typecheck && npm run test",
-    "test:db": "vitest run src/test/db"
+    "test:db": "vitest run src/test/db",
+    "env:check": "node scripts/check-env.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

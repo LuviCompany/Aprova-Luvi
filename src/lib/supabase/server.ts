@@ -9,10 +9,10 @@ import { getSupabaseConfig } from "@/lib/env";
  */
 export async function createSupabaseServerClient() {
   const config = getSupabaseConfig();
-  if (!config) throw new Error("Supabase não está configurado (SUPABASE_URL / SUPABASE_ANON_KEY).");
+  if (!config) throw new Error("Supabase não está configurado (SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY).");
   const cookieStore = await cookies();
 
-  return createServerClient(config.url, config.anonKey, {
+  return createServerClient(config.url, config.publishableKey, {
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll(cookiesToSet) {

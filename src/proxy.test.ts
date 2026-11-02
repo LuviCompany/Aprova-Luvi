@@ -6,6 +6,7 @@ import { proxy } from "@/proxy";
 const make = (path: string) => new NextRequest(new URL(path, "http://localhost:3000"));
 const locationOf = (res: Response) => new URL(res.headers.get("location") ?? "", "http://localhost:3000");
 
+const PUB = "sb_publishable_" + "x".repeat(30);
 const SAVED = { ...process.env };
 afterEach(() => {
   process.env = { ...SAVED };
@@ -16,7 +17,7 @@ describe("proxy com Supabase configurado e sem sessão", () => {
     delete process.env.APROVA_DEMO_MODE;
     // Endereço local inexistente: getClaims() sem cookie nem chega a abrir conexão.
     process.env.SUPABASE_URL = "http://127.0.0.1:54321";
-    process.env.SUPABASE_ANON_KEY = "chave-anon-de-teste";
+    process.env.SUPABASE_PUBLISHABLE_KEY = PUB;
   });
 
   it.each(["/admin", "/admin/materiais/m1", "/portal", "/portal/historico", "/redefinir-senha"])(
@@ -47,7 +48,7 @@ describe("proxy com Supabase configurado e sem sessão", () => {
 describe("proxy sem Supabase configurado e fora do modo demonstração", () => {
   it("falha fechado: áreas protegidas vão para o login", async () => {
     delete process.env.SUPABASE_URL;
-    delete process.env.SUPABASE_ANON_KEY;
+    delete process.env.SUPABASE_PUBLISHABLE_KEY;
     delete process.env.APROVA_DEMO_MODE;
     const res = await proxy(make("/admin"));
     expect(locationOf(res).pathname).toBe("/login");
@@ -57,7 +58,7 @@ describe("proxy sem Supabase configurado e fora do modo demonstração", () => {
 describe("proxy em modo demonstração", () => {
   it("não exige sessão (comportamento da Fase 1)", async () => {
     delete process.env.SUPABASE_URL;
-    delete process.env.SUPABASE_ANON_KEY;
+    delete process.env.SUPABASE_PUBLISHABLE_KEY;
     process.env.APROVA_DEMO_MODE = "true";
     const res = await proxy(make("/admin"));
     expect(res.headers.get("location")).toBeNull();
@@ -66,7 +67,7 @@ describe("proxy em modo demonstração", () => {
   it("é desligado se o Supabase for configurado, mesmo com o opt-in ligado", async () => {
     process.env.APROVA_DEMO_MODE = "true";
     process.env.SUPABASE_URL = "http://127.0.0.1:54321";
-    process.env.SUPABASE_ANON_KEY = "chave-anon-de-teste";
+    process.env.SUPABASE_PUBLISHABLE_KEY = PUB;
     const res = await proxy(make("/portal"));
     expect(locationOf(res).pathname).toBe("/login");
   });

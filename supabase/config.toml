@@ -12,17 +12,22 @@ major_version = 17
 
 [auth]
 enabled = true
+# Este arquivo é SÓ de desenvolvimento local: aponta apenas para localhost. A produção tem o
+# próprio projeto e a própria configuração (veja docs/SUPABASE.md); nunca aplique este arquivo
+# nela, nem coloque o domínio de produção aqui.
 site_url = "http://localhost:3000"
 additional_redirect_urls = ["http://localhost:3000/auth/confirm"]
 # Sem cadastro livre: contas só nascem por convite da equipe.
 enable_signup = false
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
+# Mesma regra do app (src/lib/auth/password.ts). No projeto em nuvem isto é configurado no painel.
+minimum_password_length = 10
+password_requirements = "letters_digits"
 
 [auth.email]
 enable_signup = false
 enable_confirmations = true
-# Senha forte: o app também valida (10+ caracteres, letras e números).
 double_confirm_changes = true
 
 [auth.email.template.recovery]

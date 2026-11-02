@@ -83,8 +83,9 @@ as $$
   select a.id
   from public.approvers a
   join public.profiles p on p.id = a.profile_id
+  join public.clients c on c.id = a.client_id
   where a.profile_id = auth.uid() and a.client_id = p_client_id
-    and a.active and p.active and p.role = 'cliente';
+    and a.active and p.active and c.active and p.role = 'cliente';
 $$;
 
 -- O cliente só enxerga versões e materiais que já foram enviados para aprovação.
@@ -144,7 +145,8 @@ begin
   end if;
   if not exists (
     select 1 from public.approvers a
-    where a.id = p_approver_id and a.client_id = r.client_id and a.active
+    join public.clients c on c.id = a.client_id
+    where a.id = p_approver_id and a.client_id = r.client_id and a.active and c.active
   ) then
     raise exception 'aprovador não autorizado para esta solicitação';
   end if;
@@ -212,7 +214,13 @@ set search_path = ''
 as $$
 declare
   l public.approval_links;
+  v_request uuid;
 begin
+  select request_id into v_request from public.approval_links where id = p_link_id;
+  if v_request is null then
+    raise exception 'link inválido';
+  end if;
+  perform 1 from public.approval_requests where id = v_request for update;
   select * into l from public.approval_links where id = p_link_id for update;
   if not found then
     raise exception 'link inválido';
@@ -247,7 +255,7 @@ declare
   r public.approval_requests;
   v_id uuid;
 begin
-  select * into r from public.approval_requests where id = p_request_id;
+  select * into r from public.approval_requests where id = p_request_id for update;
   if not found or not app.staff_can_access(r.client_id) then
     raise exception 'sem permissão';
   end if;

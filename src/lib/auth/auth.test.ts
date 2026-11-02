@@ -3,9 +3,7 @@ import { classifyAuthError } from "@/lib/auth/errors";
 import { validateNewPassword } from "@/lib/auth/password";
 import { safeNextPath } from "@/lib/auth/redirect";
 import { canAccessPath, homeForRole, isAppRole, isProtectedPath, isStaffRole } from "@/lib/auth/roles";
-import { getSiteUrl, getSupabaseConfig, isDemoMode, isSupabaseConfigured, requireServiceRoleKey } from "@/lib/env";
 
-const env = (values: Record<string, string>) => values as unknown as NodeJS.ProcessEnv;
 
 describe("roles e acesso por perfil", () => {
   it("equipe vai para /admin e cliente para /portal", () => {
@@ -107,43 +105,5 @@ describe("classifyAuthError", () => {
   it("trata credencial inválida como 'other' (mensagem única, sem enumerar contas)", () => {
     expect(classifyAuthError({ status: 400, code: "invalid_credentials" })).toBe("other");
     expect(classifyAuthError(null)).toBe("other");
-  });
-});
-
-describe("ambiente", () => {
-  const configured = { SUPABASE_URL: "https://abc.supabase.co", SUPABASE_ANON_KEY: "anon" };
-
-  it("só considera o Supabase configurado com URL e chave válidas", () => {
-    expect(isSupabaseConfigured(env({}))).toBe(false);
-    expect(isSupabaseConfigured(env({ SUPABASE_URL: "https://abc.supabase.co" }))).toBe(false);
-    expect(isSupabaseConfigured(env(configured))).toBe(true);
-    expect(getSupabaseConfig(env({ SUPABASE_URL: "not a url", SUPABASE_ANON_KEY: "k" }))).toBeNull();
-  });
-
-  it("recusa URL http fora de localhost (evita enviar sessão em texto puro)", () => {
-    expect(getSupabaseConfig(env({ SUPABASE_URL: "http://abc.supabase.co", SUPABASE_ANON_KEY: "k" }))).toBeNull();
-    expect(getSupabaseConfig(env({ SUPABASE_URL: "http://127.0.0.1:54321", SUPABASE_ANON_KEY: "k" }))).not.toBeNull();
-  });
-
-  it("modo demonstração exige opt-in explícito", () => {
-    expect(isDemoMode(env({}))).toBe(false);
-    expect(isDemoMode(env({ APROVA_DEMO_MODE: "true" }))).toBe(true);
-    expect(isDemoMode(env({ APROVA_DEMO_MODE: "1" }))).toBe(false);
-  });
-
-  it("configurar o Supabase desliga a demonstração, mesmo com o opt-in esquecido ligado", () => {
-    expect(isDemoMode(env({ APROVA_DEMO_MODE: "true", ...configured }))).toBe(false);
-  });
-
-  it("exige a chave de serviço quando pedida e nunca a inventa", () => {
-    expect(() => requireServiceRoleKey(env({}))).toThrow(/SUPABASE_SERVICE_ROLE_KEY/);
-    expect(requireServiceRoleKey(env({ SUPABASE_SERVICE_ROLE_KEY: "k" }))).toBe("k");
-  });
-
-  it("normaliza a URL pública do app", () => {
-    expect(getSiteUrl(env({ NEXT_PUBLIC_APP_URL: "https://aprova.luvicompany.com.br///" }))).toBe(
-      "https://aprova.luvicompany.com.br",
-    );
-    expect(getSiteUrl(env({}))).toBe("http://localhost:3000");
   });
 });

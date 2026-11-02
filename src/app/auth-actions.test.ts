@@ -49,14 +49,15 @@ const SAVED = { ...process.env };
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.SUPABASE_URL = "https://projeto-de-teste.supabase.co";
-  process.env.SUPABASE_ANON_KEY = "anon-de-teste";
-  process.env.NEXT_PUBLIC_APP_URL = "https://aprova.luvicompany.com.br";
+  process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_" + "x".repeat(30);
+  process.env.APP_URL = "http://localhost:3000";
   auth.signInWithPassword.mockResolvedValue({ error: null });
   auth.signOut.mockResolvedValue({ error: null });
   auth.resetPasswordForEmail.mockResolvedValue({ error: null });
   auth.updateUser.mockResolvedValue({ error: null });
 });
 afterEach(() => {
+  vi.unstubAllEnvs();
   process.env = { ...SAVED };
 });
 
@@ -136,11 +137,36 @@ describe("requestPasswordResetAction", () => {
     expect(auth.resetPasswordForEmail).not.toHaveBeenCalled();
   });
 
-  it("aponta o link para /auth/confirm no domínio configurado", async () => {
+  it("em desenvolvimento, o link aponta para localhost", async () => {
     await request("ana@empresa.com");
     expect(auth.resetPasswordForEmail).toHaveBeenCalledWith("ana@empresa.com", {
-      redirectTo: "https://aprova.luvicompany.com.br/auth/confirm?next=/redefinir-senha",
+      redirectTo: "http://localhost:3000/auth/confirm",
     });
+  });
+
+  it("um APP_URL de produção copiado para o .env de desenvolvimento NÃO vira link de e-mail", async () => {
+    process.env.APP_URL = "https://aprova.luvicompany.com.br";
+    await request("ana@empresa.com");
+    expect(auth.resetPasswordForEmail).toHaveBeenCalledWith("ana@empresa.com", {
+      redirectTo: "http://localhost:3000/auth/confirm",
+    });
+  });
+
+  it("em produção usa o APP_URL https configurado", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    process.env.APP_URL = "https://aprova.luvicompany.com.br/";
+    await request("ana@empresa.com");
+    expect(auth.resetPasswordForEmail).toHaveBeenCalledWith("ana@empresa.com", {
+      redirectTo: "https://aprova.luvicompany.com.br/auth/confirm",
+    });
+  });
+
+  it("em produção sem APP_URL válido, não envia link (falha fechado)", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    delete process.env.APP_URL;
+    const result = await request("ana@empresa.com");
+    expect(result.error).toMatch(/não foi configurado/);
+    expect(auth.resetPasswordForEmail).not.toHaveBeenCalled();
   });
 
   it("responde igual exista a conta ou não (não revela e-mails cadastrados)", async () => {

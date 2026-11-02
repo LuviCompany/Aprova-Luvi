@@ -47,8 +47,8 @@ export default defineConfig({
       timeout: 120_000,
       env: {
         SUPABASE_URL: "http://127.0.0.1:59999",
-        SUPABASE_ANON_KEY: "chave-anon-de-teste",
-        NEXT_PUBLIC_APP_URL: `http://localhost:${REAL_PORT}`,
+        SUPABASE_PUBLISHABLE_KEY: "sb_publishable_" + "x".repeat(30),
+        APP_URL: `http://localhost:${REAL_PORT}`,
       },
     },
   ],

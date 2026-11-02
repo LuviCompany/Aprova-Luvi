@@ -1,4 +1,7 @@
-<!-- Modelo de e-mail "Invite user" do Supabase. O convidado define a própria senha em /redefinir-senha. -->
+<!--
+  Modelo "Invite user" do Supabase. Mesma regra de {{ .RedirectTo }} do modelo de recuperação.
+  O convidado define a própria senha em /redefinir-senha.
+-->
 <div style="font-family: Arial, Helvetica, sans-serif; background:#0a0a0a; padding:32px; color:#f5f5f5;">
   <div style="max-width:480px; margin:0 auto; background:#141414; border:1px solid #2a2a2a; border-radius:16px; padding:32px;">
     <h1 style="margin:0 0 12px; font-size:22px; color:#ffffff;">Seu acesso ao Aprova Luvi</h1>
@@ -6,7 +9,7 @@
       A Luvi Company criou um acesso para você acompanhar e aprovar materiais.
       Clique abaixo para escolher a sua senha.
     </p>
-    <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/redefinir-senha"
+    <a href="{{ if .RedirectTo }}{{ .RedirectTo }}{{ else }}{{ .SiteURL }}/auth/confirm{{ end }}?token_hash={{ .TokenHash }}&type=invite"
        style="display:inline-block; background:#ff3b00; color:#ffffff; text-decoration:none; font-weight:700; padding:14px 28px; border-radius:999px;">
       Criar minha senha
     </a>

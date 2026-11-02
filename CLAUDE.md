@@ -58,6 +58,7 @@ npm test             # Vitest: unitários, componentes e banco (PGlite)
 npm run test:db      # só os testes de banco/RLS (src/test/db)
 npm run test:e2e     # build + Playwright: demo em :3100 (desktop+celular) e modo real em :3101
 npm run check        # lint + typecheck + testes (rodar antes de entregar)
+npm run env:check    # confere variáveis de ambiente sem abrir conexão nem imprimir chaves
 ```
 
 Se `next build` falhar com `EPERM ... .next` (OneDrive travando arquivos), apague `.next` e rode de novo.
@@ -114,7 +115,8 @@ Origem: `Site-Luvi` (`CLAUDE.md` e `assets/css`). Tema **único e escuro**, toke
 
 ## Banco de dados e autenticação (Fase 2)
 
-- **Migrations são imutáveis depois de aplicadas**: mudança = nova migration. Toda alteração em `supabase/migrations/` exige `npm run test:db` verde, com teste novo para a regra alterada.
+- **Migrations são imutáveis depois de aplicadas** em qualquer projeto Supabase: mudança = nova migration. Enquanto nenhuma foi aplicada (hoje, nenhuma), pode-se corrigir in loco. Toda alteração em `supabase/migrations/` exige `npm run test:db` verde, com teste novo para a regra alterada.
+- **Função nova = `revoke execute on function … from public, anon;` na própria migration** (o Postgres abre EXECUTE a PUBLIC por padrão e isso não dá para desligar globalmente). `privileges.test.ts` audita o catálogo e reprova qualquer função/tabela/política fora da lista permitida; `supabase/verify.sql` é a mesma auditoria para rodar no projeto real.
 - Modelo: `organizations` → `profiles` (1:1 com `auth.users`, papel `admin|designer|atendimento|cliente`) → `clients` → `approvers` (vínculo opcional a um perfil de login) → `projects` → `materials` → `material_versions` (imutáveis) → `material_files` (um por slide) → `approval_requests` → `approval_links` (só o **hash** do token) → `comments` / `decisions` (imutáveis) / `audit_events`.
 - Todas as tabelas de negócio carregam `client_id`; FKs compostas impedem filho apontando para pai de outro cliente. Nada tem `ON DELETE CASCADE`: arquivar é `active = false`.
 - RLS ligada em tudo; `anon` não tem acesso a tabela nenhuma; `authenticated` recebe grants mínimos por coluna (ex.: o status do material e o `token_hash` não são graváveis/legíveis pelo app). Segredos (`approval_verifications`, `approval_link_sessions`) só o `service_role` acessa.
@@ -124,6 +126,9 @@ Origem: `Site-Luvi` (`CLAUDE.md` e `assets/css`). Tema **único e escuro**, toke
 - Autorização em duas camadas: `proxy.ts` (barra anônimos) e a DAL (`requireStaff`/`requireClientUser`/`requireAdmin`), sempre dentro de `<Suspense>` e com `await connection()` para ser decidida por requisição. Server Actions e Route Handlers chamam a DAL; nunca confiam só no proxy.
 - Redirecionamentos pós-login passam por `safeNextPath`. Mensagens de login/recuperação são idênticas exista a conta ou não.
 - Usar `createSupabaseAdminClient` (ignora RLS) só em código de servidor, depois de autorizar a operação no próprio código.
+- **Chaves modernas**: `SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_…`) e `SUPABASE_SECRET_KEY` (`sb_secret_…`); os nomes legados (`ANON`/`SERVICE_ROLE`) só como reserva. `classifyKey` identifica o tipo pelo conteúdo e o app recusa chave secreta na variável pública.
+- **E-mails de auth por ambiente**: o app envia `redirectTo = APP_URL/auth/confirm` e os modelos de e-mail usam `{{ .RedirectTo }}` (não `{{ .SiteURL }}`). Em desenvolvimento só `localhost` é aceito; em produção `APP_URL` precisa ser https. Dev e produção usam **projetos Supabase diferentes** (`docs/SUPABASE.md`).
+- `scripts/bootstrap-admin.mjs` é simulação por padrão; `--execute` exige `--project-host` e recusa chave pública e `APP_URL` de produção.
 
 ## Segurança (valem desde já e são obrigatórias na Fase 2)
 
@@ -133,7 +138,7 @@ Origem: `Site-Luvi` (`CLAUDE.md` e `assets/css`). Tema **único e escuro**, toke
 4. **Links de aprovação** revogáveis, com expiração e uso controlado. Guardar só o **hash** do token; token em URL nunca vai para log, analytics ou `Referer` (a página já usa `referrer: no-referrer` e `robots: noindex`). Token desconhecido e revogado exibem respostas equivalentes para não enumerar tokens.
 5. **Identidade do aprovador** confirmada no fluxo por link (código por e-mail validado no servidor — na Fase 1 é só simulado).
 6. **Decisões são imutáveis**: aprovar/pedir alteração gera registro novo (quem, quando, versão, canal); nunca editar nem apagar histórico. Nova versão não apaga a anterior.
-7. **Nunca expor segredos no frontend.** Somente variáveis `NEXT_PUBLIC_*` podem ir ao navegador; `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY` e `APPROVAL_LINK_SECRET` ficam só no servidor. `.env*` está no `.gitignore` (exceto `.env.example`).
+7. **Nunca expor segredos no frontend.** Somente variáveis `NEXT_PUBLIC_*` podem ir ao navegador (hoje nenhuma é usada); `SUPABASE_SECRET_KEY` (`sb_secret_…`), `RESEND_API_KEY` e qualquer segredo de link ficam só no servidor. `.env*` está no `.gitignore` (exceto `.env.example`).
 8. Validar toda entrada no servidor (ex.: Zod) e limitar tentativas (código de verificação, login).
 
 ## Regras de trabalho

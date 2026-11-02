@@ -10,6 +10,21 @@
 
 create schema if not exists app;
 
+-- Privilégios PADRÃO: no Supabase, tudo que é criado em "public" nasce com ALL para anon e
+-- authenticated. Revogamos isso ANTES de criar qualquer objeto, e vale também para objetos de
+-- migrations futuras: tabelas e sequências nunca ficam acessíveis sem um GRANT explícito.
+--
+-- LIMITAÇÃO conhecida do Postgres: funções novas continuam com EXECUTE implícito para PUBLIC
+-- (e, por herança, para anon). ALTER DEFAULT PRIVILEGES ... IN SCHEMA não remove esse padrão, e
+-- revogá-lo globalmente quebraria extensões. Por isso TODA função nova precisa de
+--   revoke execute on function ... from public, anon;
+-- na própria migration. O teste src/test/db/privileges.test.ts falha se alguma função de
+-- public/app ficar executável por anon ou por authenticated fora da lista permitida.
+alter default privileges in schema public revoke all on tables from anon, authenticated;
+alter default privileges in schema public revoke all on sequences from anon, authenticated;
+alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
+alter default privileges in schema app revoke execute on functions from public, anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Tipos
 -- ---------------------------------------------------------------------------

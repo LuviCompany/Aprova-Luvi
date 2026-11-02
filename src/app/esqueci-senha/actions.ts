@@ -18,12 +18,19 @@ export async function requestPasswordResetAction(
 ): Promise<ForgotPasswordState> {
   if (!isSupabaseConfigured()) return { error: MESSAGES.notConfigured };
 
+  // Sem URL pública válida (produção sem APP_URL https) não se envia link: melhor falhar do que
+  // mandar um link para o lugar errado.
+  const siteUrl = getSiteUrl();
+  if (!siteUrl) return { error: MESSAGES.notConfigured };
+
   const parsed = schema.safeParse({ email: formData.get("email") });
   if (!parsed.success) return { error: "Informe um e-mail válido." };
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${getSiteUrl()}/auth/confirm?next=/redefinir-senha`,
+    // O modelo de e-mail monta o link a partir de {{ .RedirectTo }} (e não do Site URL do projeto),
+    // então cada ambiente só envia links para o próprio endereço.
+    redirectTo: `${siteUrl}/auth/confirm`,
   });
 
   if (error) {

@@ -2,7 +2,7 @@
 
 Plataforma de aprovação de materiais criativos da **Luvi Company**.
 
-> **Fase 2 em andamento (branch `fase-2`).** Banco (migrations + RLS) e autenticação (Supabase Auth) prontos e testados; as telas ainda leem dados fictícios. Sem `SUPABASE_URL`, use `APROVA_DEMO_MODE=true` para o modo demonstração. Configuração do Supabase em `docs/SUPABASE.md`; convenções e segurança em `CLAUDE.md`.
+> **Fase 2 em andamento (branch `fase-2`).** Banco (migrations + RLS) e autenticação (Supabase Auth) prontos e testados; as telas ainda leem dados fictícios. Sem `SUPABASE_URL`, use `APROVA_DEMO_MODE=true` para o modo demonstração. Configuração do Supabase (projeto de dev, chaves `sb_publishable_`/`sb_secret_`, ordem de validação) em `docs/SUPABASE.md`; convenções e segurança em `CLAUDE.md`.
 
 ```bash
 npm install

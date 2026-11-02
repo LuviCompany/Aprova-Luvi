@@ -1,4 +1,10 @@
-<!-- Modelo de e-mail "Reset Password" do Supabase. O link leva ao app, que valida o token no servidor. -->
+<!--
+  Modelo "Reset Password" do Supabase.
+  O link é montado com {{ .RedirectTo }} (endereço que o app informou e que precisa estar na lista de
+  Redirect URLs do projeto), NUNCA direto com o Site URL: assim o e-mail de desenvolvimento aponta
+  para localhost e o de produção para o domínio de produção. O Site URL só entra como reserva
+  (por exemplo, e-mail disparado pelo painel do Supabase, que não informa RedirectTo).
+-->
 <div style="font-family: Arial, Helvetica, sans-serif; background:#0a0a0a; padding:32px; color:#f5f5f5;">
   <div style="max-width:480px; margin:0 auto; background:#141414; border:1px solid #2a2a2a; border-radius:16px; padding:32px;">
     <h1 style="margin:0 0 12px; font-size:22px; color:#ffffff;">Redefinir sua senha</h1>
@@ -6,7 +12,7 @@
       Recebemos um pedido para criar uma nova senha no <strong style="color:#fff;">Aprova Luvi</strong>.
       Se não foi você, ignore este e-mail: nada será alterado.
     </p>
-    <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/redefinir-senha"
+    <a href="{{ if .RedirectTo }}{{ .RedirectTo }}{{ else }}{{ .SiteURL }}/auth/confirm{{ end }}?token_hash={{ .TokenHash }}&type=recovery"
        style="display:inline-block; background:#ff3b00; color:#ffffff; text-decoration:none; font-weight:700; padding:14px 28px; border-radius:999px;">
       Criar nova senha
     </a>

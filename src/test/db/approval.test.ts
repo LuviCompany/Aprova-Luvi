@@ -301,3 +301,41 @@ describe("cancelamento e ciclo de versões", () => {
     });
   });
 });
+
+describe("cliente arquivado (active = false)", () => {
+  const setClientActive = (active: boolean) =>
+    db.query("update public.clients set active = $1 where id = $2", [active, IDS.clienteA]);
+
+  it("o aprovador de um cliente arquivado não decide pelo portal", async () => {
+    const m = await sent();
+    await setClientActive(false);
+    try {
+      expect(await errorOf(() => decide(IDS.userClienteA, m, "aprovado"))).toMatch(/sem permissão/);
+    } finally {
+      await setClientActive(true);
+    }
+    expect(await statusOf(m.materialId)).toBe("aguardando");
+  });
+
+  it("nem por link já emitido: o núcleo da decisão revalida o cliente", async () => {
+    const m = await sent();
+    const linkId = await createLink(m, "cliente-arquivado");
+    await setClientActive(false);
+    try {
+      const erro = await db.asService(() =>
+        errorOf(() => db.query("select public.decide_via_link($1,'aprovado','')", [linkId])),
+      );
+      expect(erro).toMatch(/não autorizado/);
+    } finally {
+      await setClientActive(true);
+    }
+    expect(await statusOf(m.materialId)).toBe("aguardando");
+  });
+
+  it("reativar o cliente restabelece o acesso", async () => {
+    const m = await sent();
+    await setClientActive(false);
+    await setClientActive(true);
+    expect(await errorOf(() => decide(IDS.userClienteA, m, "aprovado"))).toBeNull();
+  });
+});

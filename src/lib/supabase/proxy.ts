@@ -19,7 +19,7 @@ export async function refreshSession(request: NextRequest): Promise<SessionRefre
   let response = NextResponse.next({ request });
   if (!config) return { response, authenticated: false };
 
-  const supabase = createServerClient(config.url, config.anonKey, {
+  const supabase = createServerClient(config.url, config.publishableKey, {
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll(cookiesToSet, headers) {
