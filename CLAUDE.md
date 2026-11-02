@@ -18,14 +18,23 @@ Três ambientes:
 | Portal do cliente | `/portal/*` | Aprovadores autenticados |
 | Aprovação rápida | `/aprovar/[token]` | Aprovador com link seguro (sem login) |
 
-## Estado atual: Fase 1 (protótipo com dados fictícios)
+## Estado atual: Fase 2 em andamento (branch `fase-2`)
 
-- Tudo vem de `src/lib/mock/data.ts`. **Não há backend, banco, auth, e-mail nem storage ainda.**
-- Estado de interações (aprovar, comentar) vive só no navegador e some ao recarregar.
-- Login aceita qualquer e-mail válido + senha de 6+ caracteres; o código da aprovação rápida é `123456`. Tudo isso é demonstração e **deve ser substituído na Fase 2**.
-- Links de demonstração: `/aprovar/demo` (válido), `/aprovar/expirado`, `/aprovar/revogado`, `/aprovar/utilizado`.
-- "Agora" é fixo em `NOW` (`2026-10-28T12:00:00-03:00`) para manter telas e testes determinísticos. Nunca usar `Date.now()` nas regras de domínio; receber a data por parâmetro.
-- **Não implementar o backend completo antes de o usuário validar a Fase 1.**
+**Módulos prontos (código + testes, ainda NÃO conectados a um projeto Supabase real):**
+
+1. **Banco de dados** — `supabase/migrations/` (4 arquivos): esquema, funções, RLS e storage. Testado com PGlite (`npm run test:db`).
+2. **Autenticação** — Supabase Auth (login, recuperação de senha, convite, logout), `src/proxy.ts`, DAL em `src/lib/auth/session.ts`.
+
+**Ainda por fazer:** Módulo 3 (cadastro/upload/versões de materiais) e Módulo 4 (solicitações, aprovação no portal, link seguro com código, comentários, decisões reais). Até lá, `/admin` e `/portal` **autenticam de verdade, mas ainda leem `src/lib/mock/`**: não cadastre clientes reais. Fora do modo demonstração, `/aprovar/[token]` responde sempre "link inválido".
+
+### Modo demonstração x modo real
+
+- `APROVA_DEMO_MODE=true` liga o modo demonstração da Fase 1 (login fictício, dados de exemplo, links `/aprovar/demo|expirado|revogado|utilizado`, código `123456`).
+- Ele só vale **se `SUPABASE_URL`/`SUPABASE_ANON_KEY` estiverem ausentes**: configurar o Supabase desliga a demonstração (`isDemoMode()` em `src/lib/env.ts`). O login fictício nunca convive com usuários reais.
+- Sem Supabase e sem demo, tudo falha fechado (login mostra "ambiente não configurado").
+- **Produção atual** (`aprova.luvicompany.com.br`) roda a Fase 1 em modo demonstração. Fazer deploy desta branch **sem** configurar o Supabase e **sem** `APROVA_DEMO_MODE=true` derruba a demonstração. Nada disso foi publicado.
+- "Agora" nos dados fictícios é fixo em `NOW` (`2026-10-28T12:00:00-03:00`). Nunca usar `Date.now()` nas regras de domínio; receber a data por parâmetro.
+- Configuração do Supabase: `docs/SUPABASE.md`.
 
 ## Stack
 
@@ -45,10 +54,13 @@ Este Next.js **não é o que você conhece**. Antes de escrever código de rotea
 npm run dev          # servidor local (porta 3000)
 npm run lint         # ESLint
 npm run typecheck    # next typegen + tsc --noEmit
-npm test             # Vitest (unitários e de componente)
-npm run test:e2e     # Playwright: faz build, sobe em :3100, roda desktop + celular
-npm run check        # lint + typecheck + testes unitários (rodar antes de entregar)
+npm test             # Vitest: unitários, componentes e banco (PGlite)
+npm run test:db      # só os testes de banco/RLS (src/test/db)
+npm run test:e2e     # build + Playwright: demo em :3100 (desktop+celular) e modo real em :3101
+npm run check        # lint + typecheck + testes (rodar antes de entregar)
 ```
+
+Se `next build` falhar com `EPERM ... .next` (OneDrive travando arquivos), apague `.next` e rode de novo.
 
 ## Estrutura
 
@@ -58,7 +70,15 @@ src/components/     componentes de produto (material-review, decision-panel, com
 src/components/ui/  shadcn/ui — gerado pela CLI, editar com parcimônia
 src/lib/domain.ts   regras de negócio puras (estado do link, KPIs, filtros) — onde ficam os testes
 src/lib/types.ts    modelos de domínio
-src/lib/mock/       dados fictícios da Fase 1
+src/lib/mock/       dados fictícios (modo demonstração; serão substituídos nos Módulos 3 e 4)
+src/lib/env.ts      leitura central de variáveis, isDemoMode()
+src/lib/auth/       roles, safeNextPath, senha, erros (puros) e session.ts (DAL: requireStaff/requireClientUser)
+src/lib/supabase/   server.ts (usuário, RLS), admin.ts (service_role, só servidor), proxy.ts (renovação de sessão)
+src/proxy.ts        primeira barreira: anônimo em /admin, /portal, /redefinir-senha vai ao /login
+src/test/db/        harness PGlite + testes de esquema, RLS, isolamento e aprovação
+supabase/           migrations SQL, config.toml e modelos de e-mail
+scripts/            bootstrap-admin.mjs (primeiro administrador, roda uma vez)
+docs/SUPABASE.md    passo a passo de configuração e variáveis
 e2e/                testes Playwright
 public/brand/       logo e favicon copiados do site institucional
 ```
@@ -91,6 +111,19 @@ Origem: `Site-Luvi` (`CLAUDE.md` e `assets/css`). Tema **único e escuro**, toke
 - Acessibilidade é requisito: `label` em todo campo, `aria-live` em contagens que mudam, foco visível, `skip-link`, `prefers-reduced-motion` respeitado, navegação por teclado nos diálogos (base-ui já cuida do foco).
 - Responsivo mobile-first; nenhuma tela pode gerar scroll horizontal (há teste E2E para isso). Tabelas rolam dentro do próprio contêiner.
 - Não instalar o pacote npm `cn`: o registro do shadcn o referencia, mas o helper `cn` deste projeto é o padrão `clsx` + `tailwind-merge` em `src/lib/utils.ts`. Depois de rodar `npx shadcn add`, conferir se os imports não voltaram a apontar para `"cn"` (trocar por `@/lib/utils`) e se nenhum componente puxou `next-themes` (o `Toaster` é fixo em tema escuro).
+
+## Banco de dados e autenticação (Fase 2)
+
+- **Migrations são imutáveis depois de aplicadas**: mudança = nova migration. Toda alteração em `supabase/migrations/` exige `npm run test:db` verde, com teste novo para a regra alterada.
+- Modelo: `organizations` → `profiles` (1:1 com `auth.users`, papel `admin|designer|atendimento|cliente`) → `clients` → `approvers` (vínculo opcional a um perfil de login) → `projects` → `materials` → `material_versions` (imutáveis) → `material_files` (um por slide) → `approval_requests` → `approval_links` (só o **hash** do token) → `comments` / `decisions` (imutáveis) / `audit_events`.
+- Todas as tabelas de negócio carregam `client_id`; FKs compostas impedem filho apontando para pai de outro cliente. Nada tem `ON DELETE CASCADE`: arquivar é `active = false`.
+- RLS ligada em tudo; `anon` não tem acesso a tabela nenhuma; `authenticated` recebe grants mínimos por coluna (ex.: o status do material e o `token_hash` não são graváveis/legíveis pelo app). Segredos (`approval_verifications`, `approval_link_sessions`) só o `service_role` acessa.
+- Mudanças de estado de aprovação só por funções SQL (`decide_as_approver`, `decide_via_link`, `create_approval_link`, `revoke_approval_link`, `cancel_approval_request`); `decide_via_link` é só do servidor.
+- Triggers `BEFORE` rodam antes da RLS: qualquer um que leia dados de outro cliente deve checar `app.staff_can_access` primeiro (já foi um vazamento real, coberto em `rls.test.ts`).
+- **Não há cadastro livre.** Perfis são criados só pelo servidor (service_role) após convite; o signup do Supabase Auth fica desligado.
+- Autorização em duas camadas: `proxy.ts` (barra anônimos) e a DAL (`requireStaff`/`requireClientUser`/`requireAdmin`), sempre dentro de `<Suspense>` e com `await connection()` para ser decidida por requisição. Server Actions e Route Handlers chamam a DAL; nunca confiam só no proxy.
+- Redirecionamentos pós-login passam por `safeNextPath`. Mensagens de login/recuperação são idênticas exista a conta ou não.
+- Usar `createSupabaseAdminClient` (ignora RLS) só em código de servidor, depois de autorizar a operação no próprio código.
 
 ## Segurança (valem desde já e são obrigatórias na Fase 2)
 

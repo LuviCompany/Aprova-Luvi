@@ -2,17 +2,19 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useState, type FormEvent } from "react";
-import { ArrowRight, ShieldCheck } from "lucide-react";
+import { useActionState, useId, useState, type FormEvent } from "react";
+import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { signInAction, type LoginState } from "@/app/login/actions";
 
 type Audience = "luvi" | "cliente";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Validação do modo demonstração (Fase 1). */
 export function validateLogin(email: string, password: string): { email?: string; password?: string } {
   const errors: { email?: string; password?: string } = {};
   if (!EMAIL_PATTERN.test(email.trim())) errors.email = "Informe um e-mail válido.";
@@ -20,7 +22,78 @@ export function validateLogin(email: string, password: string): { email?: string
   return errors;
 }
 
-export function LoginForm() {
+interface LoginFormProps {
+  /** "demo": login fictício da Fase 1. "real": Supabase Auth via Server Action. */
+  mode: "demo" | "real";
+  /** Destino pós-login já validado no servidor. */
+  next?: string;
+}
+
+export function LoginForm({ mode, next }: LoginFormProps) {
+  return mode === "demo" ? <DemoLoginForm /> : <RealLoginForm next={next} />;
+}
+
+function RealLoginForm({ next }: { next?: string }) {
+  const id = useId();
+  const [state, formAction, pending] = useActionState<LoginState, FormData>(signInAction, {});
+
+  return (
+    <form action={formAction} className="flex flex-col gap-4">
+      {next && <input type="hidden" name="next" value={next} />}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${id}-email`}>E-mail</Label>
+        <Input
+          id={`${id}-email`}
+          name="email"
+          type="email"
+          autoComplete="email"
+          required
+          className="h-11"
+          aria-invalid={!!state.error}
+          aria-describedby={state.error ? `${id}-error` : undefined}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between">
+          <Label htmlFor={`${id}-password`}>Senha</Label>
+          <Link
+            href="/esqueci-senha"
+            className="text-xs text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
+          >
+            Esqueci minha senha
+          </Link>
+        </div>
+        <Input
+          id={`${id}-password`}
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          required
+          className="h-11"
+          aria-invalid={!!state.error}
+        />
+      </div>
+      {state.error && (
+        <p id={`${id}-error`} role="alert" className="text-sm text-destructive">
+          {state.error}
+        </p>
+      )}
+      <Button type="submit" size="lg" className="mt-2" disabled={pending}>
+        {pending ? (
+          <>
+            <Loader2 className="animate-spin" data-icon="inline-start" /> Entrando…
+          </>
+        ) : (
+          <>
+            Entrar <ArrowRight data-icon="inline-end" />
+          </>
+        )}
+      </Button>
+    </form>
+  );
+}
+
+function DemoLoginForm() {
   const router = useRouter();
   const id = useId();
   const [audience, setAudience] = useState<Audience>("luvi");
@@ -33,7 +106,6 @@ export function LoginForm() {
     const found = validateLogin(email, password);
     setErrors(found);
     if (Object.keys(found).length > 0) return;
-    // Fase 1: sem autenticação real. Na Fase 2 isto vira Supabase Auth + redirecionamento por papel.
     router.push(audience === "luvi" ? "/admin" : "/portal");
   };
 
@@ -73,7 +145,7 @@ export function LoginForm() {
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <Label htmlFor={`${id}-password`}>Senha</Label>
-            <Link href="#" className="text-xs text-muted-foreground underline-offset-4 hover:text-primary hover:underline">
+            <Link href="/esqueci-senha" className="text-xs text-muted-foreground underline-offset-4 hover:text-primary hover:underline">
               Esqueci minha senha
             </Link>
           </div>
@@ -101,8 +173,8 @@ export function LoginForm() {
       <p className="flex items-start gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-muted-foreground">
         <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
         <span>
-          Ambiente de demonstração (Fase 1): qualquer e-mail válido e senha com 6+ caracteres entram, sem
-          verificação real. Recebeu um link de aprovação por e-mail? Basta abri-lo, sem precisar de login.
+          Ambiente de demonstração: qualquer e-mail válido e senha com 6+ caracteres entram, sem verificação
+          real. Recebeu um link de aprovação por e-mail? Basta abri-lo, sem precisar de login.
         </span>
       </p>
     </div>

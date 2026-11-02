@@ -5,6 +5,7 @@ import { Logo } from "@/components/brand/logo";
 import { QuickApproval } from "@/components/quick-approval";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { isDemoMode } from "@/lib/env";
 import { LINK_STATE_LABEL, clientById, maskEmail, projectById, resolveLinkState } from "@/lib/domain";
 import { NOW, approvalLinks, clients, comments, decisions, materials, projects } from "@/lib/mock/data";
 import type { LinkState } from "@/lib/types";
@@ -50,7 +51,9 @@ function Frame({ children }: { children: React.ReactNode }) {
 
 export default async function QuickApprovalPage({ params }: PageProps<"/aprovar/[token]">) {
   const { token } = await params;
-  const link = approvalLinks.find((l) => l.token === token);
+  // Até o Módulo 4 (links reais) os tokens existentes são fictícios. Fora do modo demonstração
+  // nenhum deles vale: a página responde como link inválido (falha fechado).
+  const link = isDemoMode() ? approvalLinks.find((l) => l.token === token) : undefined;
   const state = resolveLinkState(link, NOW);
   const material = link && materials.find((m) => m.id === link.materialId);
 

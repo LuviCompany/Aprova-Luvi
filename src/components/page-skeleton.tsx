@@ -15,3 +15,17 @@ export function PageSkeleton() {
     </div>
   );
 }
+
+/** Fallback das áreas autenticadas enquanto a sessão é verificada no servidor. */
+export function ShellSkeleton() {
+  return (
+    <div role="status" aria-label="Carregando" className="min-h-screen p-6">
+      <Skeleton className="mb-6 h-10 w-48" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, i) => (
+          <Skeleton key={i} className="h-28 rounded-2xl" />
+        ))}
+      </div>
+    </div>
+  );
+}

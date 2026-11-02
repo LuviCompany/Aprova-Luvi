@@ -10,17 +10,16 @@ import {
   FolderKanban,
   Images,
   LayoutDashboard,
-  LogOut,
   Menu,
   Users,
 } from "lucide-react";
+import { SignOutMenuItem } from "@/components/auth/sign-out-item";
 import { Logo } from "@/components/brand/logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -69,7 +68,14 @@ function NavFallback() {
   return <div aria-hidden className="h-72 animate-pulse rounded-xl bg-white/[0.03]" />;
 }
 
-export function AdminShell({ children }: { children: ReactNode }) {
+export interface ShellUser {
+  name: string;
+  email: string;
+  initials: string;
+  roleLabel: string;
+}
+
+export function AdminShell({ user, children }: { user: ShellUser; children: ReactNode }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -116,16 +122,19 @@ export function AdminShell({ children }: { children: ReactNode }) {
                 className="flex items-center gap-2 rounded-full p-1 pr-3 outline-none hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Avatar className="size-8">
-                  <AvatarFallback className="bg-primary text-xs font-bold text-primary-foreground">EN</AvatarFallback>
+                  <AvatarFallback className="bg-primary text-xs font-bold text-primary-foreground">
+                    {user.initials}
+                  </AvatarFallback>
                 </Avatar>
-                <span className="hidden text-sm font-medium sm:inline">Enzo</span>
+                <span className="hidden text-sm font-medium sm:inline">{user.name}</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuLabel>enzo@luvicompany.example</DropdownMenuLabel>
+                <DropdownMenuLabel>
+                  {user.email}
+                  <span className="block text-xs font-normal text-muted-foreground">{user.roleLabel}</span>
+                </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem render={<Link href="/login" />}>
-                  <LogOut /> Sair
-                </DropdownMenuItem>
+                <SignOutMenuItem />
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

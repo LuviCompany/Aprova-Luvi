@@ -1,32 +1,67 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Logo } from "@/components/brand/logo";
+import { redirect } from "next/navigation";
+import { Suspense } from "react";
+import { AuthLayout, Notice } from "@/components/auth/auth-layout";
 import { LoginForm } from "@/components/login-form";
+import { MESSAGES } from "@/lib/auth/errors";
+import { safeNextPath } from "@/lib/auth/redirect";
+import { homeForRole } from "@/lib/auth/roles";
+import { getSessionUser } from "@/lib/auth/session";
+import { isDemoMode, isSupabaseConfigured } from "@/lib/env";
 
 export const metadata: Metadata = { title: "Entrar" };
 
-export default function LoginPage() {
+const ERRORS: Record<string, string> = {
+  "sem-acesso": MESSAGES.noAccess,
+  "link-invalido": MESSAGES.expiredLink,
+  config: MESSAGES.notConfigured,
+};
+
+export default function LoginPage({ searchParams }: PageProps<"/login">) {
   return (
-    <main className="luvi-glow flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
-      <div className="w-full max-w-md">
-        <div className="mb-8 flex justify-center">
-          <Logo size="lg" />
-        </div>
-        <div className="rounded-3xl border border-white/10 bg-card/90 p-6 shadow-2xl shadow-black/50 backdrop-blur sm:p-8">
-          <h1 className="font-heading text-2xl font-bold text-white">Bem-vindo de volta</h1>
-          <p className="mt-1 mb-6 text-sm text-muted-foreground">
-            Acesse para acompanhar e aprovar seus materiais.
-          </p>
-          <LoginForm />
-        </div>
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          Veja uma{" "}
-          <Link href="/aprovar/demo" className="text-white underline underline-offset-4 hover:text-primary">
-            demonstração da aprovação rápida
-          </Link>
-          .
-        </p>
-      </div>
-    </main>
+    <Suspense fallback={<AuthLayout title="Bem-vindo de volta" description="Carregando…">{null}</AuthLayout>}>
+      <LoginContent searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function LoginContent({ searchParams }: { searchParams: PageProps<"/login">["searchParams"] }) {
+  // Lê a requisição ANTES do ambiente: assim o modo (demo/real) é decidido a cada acesso,
+  // nunca congelado no build.
+  const params = await searchParams;
+  const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const demo = isDemoMode();
+
+  if (!demo) {
+    const user = await getSessionUser();
+    if (user) redirect(homeForRole(user.role));
+  }
+
+  const erro = first(params.erro);
+  const msg = first(params.msg);
+  const next = safeNextPath(first(params.next), "");
+
+  return (
+    <AuthLayout
+      title="Bem-vindo de volta"
+      description="Acesse para acompanhar e aprovar seus materiais."
+      footer={
+        demo ? (
+          <>
+            Veja uma{" "}
+            <Link href="/aprovar/demo" className="text-white underline underline-offset-4 hover:text-primary">
+              demonstração da aprovação rápida
+            </Link>
+            .
+          </>
+        ) : undefined
+      }
+    >
+      {!demo && !isSupabaseConfigured() && <Notice tone="error">{MESSAGES.notConfigured}</Notice>}
+      {erro && ERRORS[erro] && <Notice tone="error">{ERRORS[erro]}</Notice>}
+      {msg === "senha-redefinida" && <Notice tone="success">Senha alterada. Entre com a nova senha.</Notice>}
+      <LoginForm mode={demo ? "demo" : "real"} next={next || undefined} />
+    </AuthLayout>
   );
 }

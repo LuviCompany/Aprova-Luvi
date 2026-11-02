@@ -1,15 +1,32 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import { redirect } from "next/navigation";
+import { Suspense, type ReactNode } from "react";
+import { InterimDataNotice } from "@/components/interim-data-notice";
+import { ShellSkeleton } from "@/components/page-skeleton";
 import { PortalShell } from "@/components/portal/portal-shell";
-import { CURRENT_PORTAL_APPROVER_ID, CURRENT_PORTAL_CLIENT_ID, clients } from "@/lib/mock/data";
+import { getPortalContext } from "@/lib/auth/portal-context";
+import { requireClientUser } from "@/lib/auth/session";
+import { isDemoMode } from "@/lib/env";
 
 export const metadata: Metadata = { title: { default: "Portal do cliente", template: "%s · Aprova Luvi" } };
 
 export default function PortalLayout({ children }: { children: ReactNode }) {
-  const client = clients.find((c) => c.id === CURRENT_PORTAL_CLIENT_ID)!;
-  const approver = client.approvers.find((a) => a.id === CURRENT_PORTAL_APPROVER_ID)!;
   return (
-    <PortalShell clientName={client.name} approverName={approver.name} approverEmail={approver.email}>
+    <Suspense fallback={<ShellSkeleton />}>
+      <PortalGate>{children}</PortalGate>
+    </Suspense>
+  );
+}
+
+/** Autorização no servidor: só aprovador ativo, vinculado a um cliente, chega ao portal. */
+async function PortalGate({ children }: { children: ReactNode }) {
+  const user = await requireClientUser();
+  const context = await getPortalContext(user);
+  if (!context) redirect("/login?erro=sem-acesso");
+
+  return (
+    <PortalShell clientName={context.clientName} approverName={user.name} approverEmail={user.email}>
+      {!isDemoMode() && <InterimDataNotice />}
       {children}
     </PortalShell>
   );

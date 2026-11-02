@@ -1,0 +1,34 @@
+# Configuração para o Supabase CLI (desenvolvimento local com `supabase start`).
+# No projeto em nuvem, os mesmos ajustes são feitos em Authentication > Settings (veja
+# docs/SUPABASE.md). Este arquivo documenta o que o app espera.
+
+project_id = "aprova-luvi"
+
+[api]
+enabled = true
+
+[db]
+major_version = 17
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/confirm"]
+# Sem cadastro livre: contas só nascem por convite da equipe.
+enable_signup = false
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+
+[auth.email]
+enable_signup = false
+enable_confirmations = true
+# Senha forte: o app também valida (10+ caracteres, letras e números).
+double_confirm_changes = true
+
+[auth.email.template.recovery]
+subject = "Redefinir sua senha — Aprova Luvi"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.invite]
+subject = "Seu acesso ao Aprova Luvi"
+content_path = "./supabase/templates/invite.html"

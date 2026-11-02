@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 test.describe("login", () => {
   test("equipe Luvi entra no painel e navega pelo menu", async ({ page, isMobile }) => {
     await page.goto("/login");
+    await page.waitForLoadState("networkidle"); // espera a hidratação do formulário
     await page.getByLabel("E-mail").fill("enzo@luvicompany.com.br");
     await page.getByLabel("Senha").fill("senha-demo");
     await page.getByRole("button", { name: "Entrar" }).click();
@@ -19,6 +20,7 @@ test.describe("login", () => {
 
   test("mostra erros de validação e não navega", async ({ page }) => {
     await page.goto("/login");
+    await page.waitForLoadState("networkidle"); // espera a hidratação do formulário
     await page.getByRole("button", { name: "Entrar" }).click();
     await expect(page.getByText("Informe um e-mail válido.")).toBeVisible();
     await expect(page.getByText("A senha deve ter ao menos 6 caracteres.")).toBeVisible();
@@ -27,6 +29,7 @@ test.describe("login", () => {
 
   test("cliente entra no portal", async ({ page }) => {
     await page.goto("/login");
+    await page.waitForLoadState("networkidle"); // espera a hidratação do formulário
     await page.getByRole("tab", { name: "Sou cliente" }).click();
     await page.getByLabel("E-mail").fill("marina@casaaurora.com.br");
     await page.getByLabel("Senha").fill("senha-demo");

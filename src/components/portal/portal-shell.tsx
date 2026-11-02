@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, type ReactNode } from "react";
-import { Bell, LogOut } from "lucide-react";
+import { Bell } from "lucide-react";
+import { SignOutMenuItem } from "@/components/auth/sign-out-item";
 import { Logo } from "@/components/brand/logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -119,9 +119,7 @@ export function PortalShell({ clientName, approverName, approverEmail, children 
                   <span className="block text-xs font-normal text-muted-foreground">{approverEmail}</span>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem render={<Link href="/login" />}>
-                  <LogOut /> Sair
-                </DropdownMenuItem>
+                <SignOutMenuItem />
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
