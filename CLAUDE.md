@@ -64,6 +64,14 @@ npm run env:check    # confere variáveis de ambiente sem abrir conexão nem imp
 
 Se `next build` falhar com `EPERM ... .next` (OneDrive travando arquivos), apague `.next` e rode de novo.
 
+**Build/E2E com o `npm run dev` ligado:** o `next dev` guarda o estado em `.next/dev`, então não rode `next build` por cima dele. Use um diretório separado (o `next.config.ts` lê `NEXT_DIST_DIR`), em Bash:
+
+```bash
+NEXT_DIST_DIR=.next-e2e npx next build && NEXT_DIST_DIR=.next-e2e npx playwright test
+```
+
+O build reescreve o `include` do `tsconfig.json` para o novo diretório: desfaça com `git checkout -- tsconfig.json` e apague `.next-e2e` (ignorado pelo Git). Rode o E2E sem nada competindo pela CPU: com a máquina ocupada, um teste do portal já estourou o limite de 5 s.
+
 ## Estrutura
 
 ```

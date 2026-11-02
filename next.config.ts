@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Build e E2E isolados do `next dev` em execução: NEXT_DIST_DIR=.next-e2e (ver CLAUDE.md).
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   cacheComponents: true,
   partialPrefetching: true,
   // A raiz só leva ao login. Como redirecionamento de configuração (e não como página com

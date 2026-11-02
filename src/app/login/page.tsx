@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { AuthLayout, Notice } from "@/components/auth/auth-layout";
 import { LoginForm } from "@/components/login-form";
@@ -28,7 +29,9 @@ export default function LoginPage({ searchParams }: PageProps<"/login">) {
 
 async function LoginContent({ searchParams }: { searchParams: PageProps<"/login">["searchParams"] }) {
   // Lê a requisição ANTES do ambiente: assim o modo (demo/real) é decidido a cada acesso,
-  // nunca congelado no build.
+  // nunca congelado no build. connection() também evita que a leitura da sessão (que usa
+  // Date.now) seja avaliada no pré-render.
+  await connection();
   const params = await searchParams;
   const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const demo = isDemoMode();
