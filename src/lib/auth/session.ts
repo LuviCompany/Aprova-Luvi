@@ -3,6 +3,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { z } from "zod";
+import { classifyAuthError } from "@/lib/auth/errors";
 import { homeForRole, isStaffRole, type AppRole } from "@/lib/auth/roles";
 import { isDemoMode, isSupabaseConfigured } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -23,6 +24,7 @@ export interface SessionUser {
 
 export type SessionState =
   | { kind: "anonymous" }
+  | { kind: "unavailable" } // serviço de autenticação/banco inalcançável: não é o mesmo que "sem sessão"
   | { kind: "no-access" } // autenticado, mas sem perfil ativo
   | { kind: "ok"; user: SessionUser };
 
@@ -68,14 +70,18 @@ export const getSessionState = cache(async (): Promise<SessionState> => {
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.getUser();
+  // Falha de rede não prova que a sessão acabou: avisar "link expirou" a quem acabou de entrar é enganoso.
+  if (error && classifyAuthError(error) === "network") return { kind: "unavailable" };
   if (error || !data.user) return { kind: "anonymous" };
 
   // A leitura passa pela RLS: o usuário só consegue ler o próprio perfil (ou o da organização, se equipe).
-  const { data: row } = await supabase
+  const { data: row, error: profileError } = await supabase
     .from("profiles")
     .select("id, full_name, email, role, organization_id, active")
     .eq("id", data.user.id)
     .maybeSingle();
+  // Perfil negado pela RLS vem como linha vazia, sem erro; erro aqui é falha de consulta/rede.
+  if (profileError) return { kind: "unavailable" };
   const parsed = profileSchema.safeParse(row);
   if (!parsed.success || !parsed.data.active) return { kind: "no-access" };
 
@@ -101,6 +107,8 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 async function requireUser(): Promise<SessionUser> {
   const state = await getSessionState();
   if (state.kind === "anonymous") redirect("/login");
+  // Falha fechada: sem confirmar a identidade nada é exibido, e a tela de erro não finge um logout.
+  if (state.kind === "unavailable") throw new Error("Serviço de autenticação indisponível. Tente novamente.");
   if (state.kind === "no-access") redirect("/login?erro=sem-acesso");
   return state.user;
 }
@@ -134,5 +142,6 @@ export async function requireAdmin(): Promise<SessionUser> {
 
 /** Exige qualquer usuário autenticado e ativo (ex.: redefinição de senha). */
 export async function requireAnyUser(): Promise<SessionUser> {
+  await connection();
   return requireUser();
 }

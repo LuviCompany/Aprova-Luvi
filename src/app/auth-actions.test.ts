@@ -97,6 +97,12 @@ describe("signInAction", () => {
     expect((await login()).error).toMatch(/Muitas tentativas/);
   });
 
+  it("falha de rede ao confirmar o perfil não vira 'sem acesso' nem encerra a sessão", async () => {
+    getSessionState.mockResolvedValue({ kind: "unavailable" });
+    expect((await login()).error).toMatch(/serviço de autenticação/);
+    expect(auth.signOut).not.toHaveBeenCalled();
+  });
+
   it("encerra a sessão e nega quando não há perfil ativo", async () => {
     getSessionState.mockResolvedValue({ kind: "no-access" });
     const result = await login();
@@ -192,6 +198,14 @@ describe("updatePasswordAction", () => {
   it("exige sessão de recuperação válida", async () => {
     getSessionState.mockResolvedValue({ kind: "anonymous" });
     expect((await update("Senha-nova-2026")).error).toMatch(/expirou/);
+    expect(auth.updateUser).not.toHaveBeenCalled();
+  });
+
+  it("falha de rede não é anunciada como link expirado", async () => {
+    getSessionState.mockResolvedValue({ kind: "unavailable" });
+    const { error } = await update("Senha-nova-2026");
+    expect(error).toMatch(/serviço de autenticação/);
+    expect(error).not.toMatch(/expirou/);
     expect(auth.updateUser).not.toHaveBeenCalled();
   });
 

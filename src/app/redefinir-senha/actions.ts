@@ -19,6 +19,7 @@ export async function updatePasswordAction(
 
   // Só quem chegou por um link válido (sessão de recuperação/convite) pode trocar a senha.
   const state = await getSessionState();
+  if (state.kind === "unavailable") return { error: MESSAGES.network };
   if (state.kind !== "ok") return { error: MESSAGES.expiredLink };
 
   const password = String(formData.get("password") ?? "");

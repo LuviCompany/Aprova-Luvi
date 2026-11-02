@@ -38,6 +38,7 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
   }
 
   const state = await getSessionState();
+  if (state.kind === "unavailable") return { error: MESSAGES.network };
   if (state.kind !== "ok") {
     await supabase.auth.signOut();
     return { error: MESSAGES.noAccess };
