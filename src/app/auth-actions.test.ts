@@ -140,7 +140,7 @@ describe("requestPasswordResetAction", () => {
   it("em desenvolvimento, o link aponta para localhost", async () => {
     await request("ana@empresa.com");
     expect(auth.resetPasswordForEmail).toHaveBeenCalledWith("ana@empresa.com", {
-      redirectTo: "http://localhost:3000/auth/confirm",
+      redirectTo: "http://localhost:3000/auth/recovery",
     });
   });
 
@@ -148,7 +148,7 @@ describe("requestPasswordResetAction", () => {
     process.env.APP_URL = "https://aprova.luvicompany.com.br";
     await request("ana@empresa.com");
     expect(auth.resetPasswordForEmail).toHaveBeenCalledWith("ana@empresa.com", {
-      redirectTo: "http://localhost:3000/auth/confirm",
+      redirectTo: "http://localhost:3000/auth/recovery",
     });
   });
 
@@ -157,7 +157,7 @@ describe("requestPasswordResetAction", () => {
     process.env.APP_URL = "https://aprova.luvicompany.com.br/";
     await request("ana@empresa.com");
     expect(auth.resetPasswordForEmail).toHaveBeenCalledWith("ana@empresa.com", {
-      redirectTo: "https://aprova.luvicompany.com.br/auth/confirm",
+      redirectTo: "https://aprova.luvicompany.com.br/auth/recovery",
     });
   });
 

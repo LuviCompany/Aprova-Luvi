@@ -71,6 +71,19 @@ describe("bootstrap-admin: plano e travas de segurança", () => {
     expect(ok.mode).toBe("execute");
   });
 
+  it("por padrão NÃO envia e-mail (gera o link no terminal); --send-email muda isso", () => {
+    const padrao = plan([...baseArgs, "--execute", "--project-host", "projeto-dev.supabase.co"]);
+    expect(padrao.sendEmail).toBe(false);
+    expect(describePlan(padrao)).toContain("nenhum e-mail é enviado");
+    const comEmail = plan([...baseArgs, "--execute", "--send-email", "--project-host", "projeto-dev.supabase.co"]);
+    expect(comEmail.sendEmail).toBe(true);
+    expect(describePlan(comEmail)).toContain("exige SMTP");
+  });
+
+  it("o convite chega em /auth/invite do ambiente informado", () => {
+    expect(describePlan(plan())).toContain("http://localhost:3000/auth/invite");
+  });
+
   it("--check-connection é o modo somente leitura", () => {
     expect(plan([...baseArgs, "--check-connection"]).mode).toBe("check-connection");
   });

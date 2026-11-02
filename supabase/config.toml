@@ -16,7 +16,7 @@ enabled = true
 # próprio projeto e a própria configuração (veja docs/SUPABASE.md); nunca aplique este arquivo
 # nela, nem coloque o domínio de produção aqui.
 site_url = "http://localhost:3000"
-additional_redirect_urls = ["http://localhost:3000/auth/confirm"]
+additional_redirect_urls = ["http://localhost:3000/auth/*"]
 # Sem cadastro livre: contas só nascem por convite da equipe.
 enable_signup = false
 jwt_expiry = 3600

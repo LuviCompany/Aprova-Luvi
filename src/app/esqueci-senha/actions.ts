@@ -28,9 +28,10 @@ export async function requestPasswordResetAction(
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    // O modelo de e-mail monta o link a partir de {{ .RedirectTo }} (e não do Site URL do projeto),
-    // então cada ambiente só envia links para o próprio endereço.
-    redirectTo: `${siteUrl}/auth/confirm`,
+    // Endereço de chegada deste ambiente. O modelo de e-mail do projeto usa {{ .RedirectTo }} (e não o
+    // Site URL), e o modelo padrão do Supabase também devolve o usuário aqui: cada ambiente só
+    // recebe os próprios links. A finalidade (recuperação) está no caminho, não numa query.
+    redirectTo: `${siteUrl}/auth/recovery`,
   });
 
   if (error) {

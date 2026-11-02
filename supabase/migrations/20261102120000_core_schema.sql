@@ -20,6 +20,12 @@ create schema if not exists app;
 --   revoke execute on function ... from public, anon;
 -- na própria migration. O teste src/test/db/privileges.test.ts falha se alguma função de
 -- public/app ficar executável por anon ou por authenticated fora da lista permitida.
+-- O padrão do Supabase pode estar no nível do schema E no nível global (por papel criador).
+-- "IN SCHEMA" só remove o primeiro; a forma sem "IN SCHEMA" remove o global. Revogamos os dois.
+-- (Vale para objetos criados pelo papel que executa a migration, o "postgres"; objetos criados
+-- por outros papéis internos do Supabase, como supabase_admin, não são afetados.)
+alter default privileges revoke all on tables from anon, authenticated;
+alter default privileges revoke all on sequences from anon, authenticated;
 alter default privileges in schema public revoke all on tables from anon, authenticated;
 alter default privileges in schema public revoke all on sequences from anon, authenticated;
 alter default privileges in schema public revoke execute on functions from public, anon, authenticated;

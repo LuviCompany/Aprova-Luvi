@@ -60,7 +60,7 @@ O app recusa subir com a chave trocada: se uma chave **secreta** for colocada em
 ## 4. Isolamento dev x produção: o que garante que um e-mail de dev não leva à produção
 
 1. **Projeto separado** (seção 1): o link de convite/recuperação é emitido pelo projeto de dev.
-2. **Modelo de e-mail usa `{{ .RedirectTo }}`**, não `{{ .SiteURL }}` (`supabase/templates/*.html`). O app informa o `redirectTo` do **próprio ambiente** (`APP_URL`), e o Supabase só aceita endereços da lista de Redirect URLs.
+2. **O app informa o `redirectTo` do próprio ambiente** (`APP_URL/auth/recovery`, `APP_URL/auth/invite`) e o Supabase só aceita endereços da lista de Redirect URLs. O modelo de e-mail do projeto (`supabase/templates/*.html`, opcional) usa `{{ .RedirectTo }}` e nunca `{{ .SiteURL }}`; o modelo padrão do Supabase também devolve o usuário ao `redirectTo`. Nos dois casos o link leva ao endereço do ambiente que o pediu.
 3. **Lista de Redirect URLs do projeto de dev contém só `localhost`.** Como o projeto já existia, **remova qualquer outra entrada preexistente**. Mesmo um erro de configuração não consegue gerar link para a produção.
 4. **`APP_URL` em desenvolvimento só aceita localhost:** qualquer valor de fora (ex.: um `.env.local` copiado da produção) é ignorado e vira `http://localhost:3000`. Em produção, `APP_URL` precisa ser `https`; sem isso o app **não envia** o e-mail de recuperação.
 5. **`supabase/config.toml` é só local** e nunca contém o domínio de produção.
@@ -87,10 +87,23 @@ Legenda: **[Você]** age no painel/terminal; **[Eu]** executo, mediante sua auto
    | Vercel `aprova-luvi` | nenhuma variável de ambiente cadastrada |
    | Vercel `site-luvi` | só `RESEND_API_KEY`; nada de Supabase |
    | Vercel `site-ramal`, `streetcabsp` | nenhuma variável de ambiente |
-   | Vercel **`system`** (em produção) | **usa algum projeto Supabase** (variáveis `SUPABASE_*` e `POSTGRES_*`, com valores cifrados). **Não foi possível saber qual** |
+   | Vercel **`system`** (em produção) | usa o projeto `iiwqkfqqmhhtbjobxzkh.supabase.co`, **diferente** deste (`kswnwootbdzlhdvbhhpk`). Conferido manualmente pelo responsável em 2026-11-02 (as variáveis são cifradas, então só o painel da Vercel mostra o valor) |
 
-   **Ação obrigatória sua:** na Vercel, abra o projeto `system` > Settings > Environment Variables, revele `NEXT_PUBLIC_SUPABASE_URL` e confira que **NÃO é** `https://kswnwootbdzlhdvbhhpk.supabase.co`. Se for igual, **pare**: não aplique nenhuma migration e avise. No painel do Supabase deste projeto, confira também **Integrations** (nenhuma integração com a Vercel conectada) e **Logs > API Gateway** (sem tráfego nos últimos dias).
-3. **Pré-voo: o banco está vazio?** No SQL Editor, execute `supabase/preflight.sql`. **Todos os blocos `CHECK` devem devolver 0 linhas.** Os blocos `INFO` são só para você olhar (extensões, gatilhos, privilégios padrão). Qualquer linha em um `CHECK` significa que o projeto já tem conteúdo: pare e traga o resultado. Confira ainda em Edge Functions e Database > Webhooks: ambos vazios.
+   Conferido também no painel do Supabase deste projeto, em 2026-11-02:
+
+   | Onde | Resultado |
+   |---|---|
+   | Integrations | só 2 instaladas, **Data API** e **Vault** (ambas nativas de todo projeto); nenhuma integração de terceiros, nem da Vercel |
+   | Logs > API Gateway (últimos 60 min) | 22 eventos, **todos** de `@supabase-infra/mgmt-api` (verificações de saúde do próprio painel: `/auth/v1/health`, `/rest-admin/v1/ready`, `/admin/v1/service/versions`, `/admin/v1/network-bans/retrieve`). **PostgREST = 0, Auth = 0, Edge Function = 0**: nenhum aplicativo consultou o projeto |
+   | Pré-voo (`SUMMARY`) | **7 linhas, todas com `violacoes = 0`**: sem objetos em `public`/`app`, sem usuários no Auth, sem buckets nem arquivos, sem políticas em `storage.objects`, nada no Realtime |
+
+   Observação: o rótulo **"main · PRODUCTION"** na barra superior do painel do Supabase é só o nome da *branch principal* do projeto (todo projeto tem uma); **não** significa que o projeto esteja ligado a uma produção. O Free guarda logs por pouco tempo, então a janela de 60 min é uma amostra, mas combinada com o banco vazio é evidência suficiente. Se o `system` voltar a ser apontado para este projeto algum dia, a migration 3 não pode ser aplicada.
+3. **Pré-voo: o banco está vazio?** O SQL Editor mostra só o resultado da **última** consulta quando se executa um arquivo inteiro, então **não cole o arquivo todo**. Faça assim:
+   1. Em `supabase/preflight.sql`, copie **apenas o bloco `SUMMARY`** (da linha `select verificacao, violacoes` até `order by ordem;`), cole no SQL Editor e clique em Run.
+   2. Resultado esperado: uma tabela de **7 linhas com `violacoes = 0` em todas**.
+   3. Se alguma linha for maior que 0: pare, rode só o bloco `CHECK` correspondente para ver o que existe e traga o resultado. Não aplique as migrations.
+   4. Os blocos `INFO` são só para olhar (um por vez). O de privilégios padrão mostra **o schema** de cada padrão do Supabase; é normal ver `anon`/`authenticated` neles (a migration 1 revoga isso para objetos futuros).
+   5. Confira ainda em Edge Functions e Database > Webhooks: ambos vazios.
 
 ### 5.3 Chaves — [Você]
 4. Project Settings > API Keys: copiar a **publishable** e criar/copiar uma **secret** (guarde a secret só no gerenciador de senhas e no `.env.local`).
@@ -98,11 +111,17 @@ Legenda: **[Você]** age no painel/terminal; **[Eu]** executo, mediante sua auto
 
 ### 5.4 Configurar o Auth do projeto — [Você]
 6. Authentication > Sign In / Providers > Email: manter ligado; **desligar** "Allow new users to sign up" (o padrão de projetos novos é ligado).
-7. Authentication > URL Configuration: `Site URL` = `http://localhost:3000`; **Redirect URLs** = somente `http://localhost:3000/auth/confirm` (remova qualquer outra entrada).
-8. Authentication > Email Templates: colar `supabase/templates/recovery.html` (Reset Password) e `supabase/templates/invite.html` (Invite user).
+7. Authentication > URL Configuration: `Site URL` = `http://localhost:3000`; **Redirect URLs** = somente `http://localhost:3000/auth/*` (o `*` cobre `/auth/recovery`, `/auth/invite` e `/auth/confirm`, mas não sai de `/auth/`). Remova qualquer outra entrada.
+8. Authentication > Email Templates: **opcional nesta etapa**. O painel só deixa editar os modelos depois de configurar um SMTP próprio, e **o app não depende disso**: com os modelos padrão do Supabase (em inglês, sem a identidade da Luvi) o link do e-mail devolve o usuário a `/auth/recovery` ou `/auth/invite` com `?code=`, e o app conclui a troca de senha. Com SMTP próprio, cole `supabase/templates/recovery.html` (Reset Password) e `supabase/templates/invite.html` (Invite user) para ter e-mails em português e com a identidade Luvi. Detalhes na seção 5.4.1.
 9. E-mail: o SMTP padrão do Supabase **só envia para endereços da equipe da organização** (outros falham com "Email address not authorized"), **no máximo 2 e-mails por hora**, e não é para produção. Para a validação isso basta: teste só com o seu e-mail (membro da organização) e não repita envios em sequência. Para uso real, configure SMTP próprio (Resend) no projeto de produção.
 10. Política de senha do Auth (Sign In / Providers > Email): comprimento mínimo **10** e exigir **letras e números**, igual à regra do app (`src/lib/auth/password.ts`). Assim a regra vale mesmo se alguém usar a API do Auth diretamente.
 11. Opcional: proteção contra senhas vazadas (exige plano Pro) e desligar a extensão `pg_graphql` (Database > Extensions), já que o app não usa GraphQL.
+
+### 5.4.1 E-mails: modelos e SMTP (opcional agora, necessário depois)
+
+- **Agora, sem SMTP próprio:** tudo funciona com o SMTP e os modelos padrão do Supabase, dentro dos limites do passo 9 (só destinatários da equipe, 2 por hora). Detalhe do **modelo padrão**: o link de recuperação usa o fluxo PKCE, então **abra o e-mail no mesmo navegador em que pediu a recuperação**; em outro aparelho o link falha com "link inválido" e basta pedir de novo.
+- **Quando precisar de e-mails em português, para destinatários que não são da equipe ou em volume:** configure um SMTP próprio em Authentication > Emails > SMTP Settings. Com o Resend: host `smtp.resend.com`, porta `465`, usuário `resend`, senha = **uma chave de API nova criada só para o Supabase** (nunca reutilize a chave do site, que fica na Vercel), e remetente obrigatório (e-mail e nome). A documentação do Resend lista "domínio verificado" como pré-requisito; confirme lá se o seu remetente precisa de domínio verificado. Depois disso o painel libera a edição dos modelos.
+- A chave do Resend entra **só** no painel do Supabase (e depois no Resend/Vercel da Fase 3). Nunca no chat, no repositório ou no `.env.local` deste projeto.
 
 ### 5.5 Variáveis locais — [Você]
 12. Criar `.env.local` (não versionado) com os valores da seção 2.
@@ -122,10 +141,10 @@ Legenda: **[Você]** age no painel/terminal; **[Eu]** executo, mediante sua auto
 
 ### 5.8 Primeiro administrador — [Você]
 19. Teste de conexão somente leitura: o comando do passo 14 com `--check-connection`. Prova que a chave `sb_secret_` funciona na API de dados e na API administrativa do Auth. **Não cria nada.**
-20. Execução real (envia o convite): o mesmo comando com `--execute --project-host kswnwootbdzlhdvbhhpk.supabase.co`. O script se recusa a rodar em banco com perfis, com chave pública, com `APP_URL` de produção ou com host diferente do informado.
+20. Execução real: o mesmo comando com `--execute --project-host kswnwootbdzlhdvbhhpk.supabase.co`. Cria a organização e o administrador e **imprime no terminal o link de convite** (de uso único, expira, vale como senha). **Nenhum e-mail é enviado**, então não precisa de SMTP. Com SMTP configurado, `--send-email` envia o convite por e-mail. O script se recusa a rodar em banco com perfis, com chave pública, com `APP_URL` de produção ou com host diferente do informado.
 
 ### 5.9 Validar o app contra o projeto real — [Você] e [Eu]
-21. `npm run dev` (sem `APROVA_DEMO_MODE`). Abra o e-mail do convite: o endereço do link **deve começar com `http://localhost:3000/auth/confirm`**. Se apontar para outro domínio, pare e revise o passo 7.
+21. `npm run dev` (sem `APROVA_DEMO_MODE`). Abra o link de convite impresso pelo script: ele **deve começar com `http://localhost:3000/auth/invite`**. Para os e-mails de recuperação (passo 24), o botão do e-mail deve levar a `localhost:3000` (ou ao endereço do Supabase que redireciona para lá). Se apontar para outro domínio, pare e revise o passo 7.
 22. Criar a senha em `/redefinir-senha`; cair em `/login` com "Senha alterada"; entrar. Esperado: `/admin` com o aviso amarelo de dados de demonstração.
 23. Conferir: `/portal` redireciona o administrador para `/admin`; "Sair" volta ao login; `/admin` sem sessão vai ao login com `?next=`.
 24. "Esqueci minha senha": o e-mail chega, o link aponta para `localhost`, a nova senha funciona e a sessão antiga é encerrada.
@@ -150,4 +169,5 @@ Legenda: **[Você]** age no painel/terminal; **[Eu]** executo, mediante sua auto
 - Comentários da equipe em versões já enviadas são **visíveis ao cliente** (não existe nota interna). Decisão consciente até haver necessidade.
 - Validação do conteúdo real dos uploads (assinatura do arquivo, não só o tipo declarado) e a geração de URLs assinadas são do Módulo 3.
 - Limite de 50 MB por arquivo = teto do plano gratuito do Storage.
+- **Privilégios padrão do Supabase:** o pré-voo no projeto real mostrou que o Supabase concede `anon`, `authenticated` e `service_role` por padrão aos objetos criados por `postgres` e `supabase_admin`. A migration 1 revoga isso para objetos futuros criados pelo `postgres` (no schema `public` **e** no nível global, porque revogar só o schema deixava o padrão global ativo, coberto em teste). Objetos criados por `supabase_admin` (papel interno) não são afetados; o `verify.sql` confere o resultado final.
 - O projeto existente pode ter sido criado com configurações diferentes das de um projeto novo (cadastro livre ligado, Redirect URLs antigas, extensões extras): a seção 5.2 e o `preflight.sql` existem para pegar isso antes de qualquer alteração.

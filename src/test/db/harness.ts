@@ -43,6 +43,11 @@ const SUPABASE_STUB = `
   grant all on all tables in schema storage to anon, authenticated, service_role;
 
   grant usage on schema public to anon, authenticated, service_role;
+  -- O Supabase concede aos papéis da API tanto por schema quanto GLOBALMENTE (para postgres e
+  -- supabase_admin; o pré-voo no projeto real mostrou esses padrões). Os dois são reproduzidos
+  -- aqui: uma migration que só revogue "IN SCHEMA public" deixaria o padrão global ativo.
+  alter default privileges grant all on tables to anon, authenticated, service_role;
+  alter default privileges grant all on sequences to anon, authenticated, service_role;
   alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
   alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
   alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;

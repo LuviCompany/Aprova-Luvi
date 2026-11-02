@@ -85,6 +85,20 @@ test.describe("recuperação de senha", () => {
     await expect(page).toHaveURL(/\/login\?erro=/);
   });
 
+  for (const purpose of ["recovery", "invite"]) {
+    test(`/auth/${purpose} sem código válido volta ao login com aviso`, async ({ page }) => {
+      await page.goto(`/auth/${purpose}`);
+      await expect(page).toHaveURL(/\/login\?erro=link-invalido/);
+      await page.goto(`/auth/${purpose}?code=codigo-invalido`);
+      await expect(page).toHaveURL(/\/login\?erro=link-invalido/);
+    });
+  }
+
+  test("finalidade desconhecida em /auth responde 404", async ({ request }) => {
+    const res = await request.get("/auth/qualquer-coisa", { maxRedirects: 0 });
+    expect(res.status()).toBe(404);
+  });
+
   test("/auth/confirm ignora tipos não permitidos", async ({ page }) => {
     await page.goto("/auth/confirm?token_hash=x&type=magiclink&next=/admin");
     await expect(page).toHaveURL(/\/login\?erro=link-invalido/);

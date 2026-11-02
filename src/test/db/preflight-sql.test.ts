@@ -12,13 +12,14 @@ import { IDS, createMaterial, createTestDb, seedBase, type TestDb } from "./harn
 
 const sql = readFileSync(join(process.cwd(), "supabase", "preflight.sql"), "utf8");
 const blocks = sql
-  .split(/^-- (?=CHECK:|INFO:)/m)
+  .split(/^-- (?=SUMMARY:|CHECK:|INFO:)/m)
   .slice(1)
   .map((block) => {
     const [head, ...rest] = block.split("\n");
-    const kind = head.startsWith("CHECK:") ? "check" : "info";
+    const kind = head.startsWith("SUMMARY:") ? "summary" : head.startsWith("CHECK:") ? "check" : "info";
     return { kind, title: head.replace(/^(CHECK|INFO):\s*/, "").trim(), query: rest.join("\n").replace(/^--.*$/gm, "").trim().replace(/;\s*$/, "") };
   });
+const summary = blocks.find((b) => b.kind === "summary")!;
 const checks = blocks.filter((b) => b.kind === "check");
 const infos = blocks.filter((b) => b.kind === "info");
 
@@ -39,6 +40,7 @@ afterAll(async () => {
 
 describe("supabase/preflight.sql", () => {
   it("tem os blocos esperados", () => {
+    expect(summary).toBeDefined();
     expect(checks.length).toBeGreaterThanOrEqual(7);
     expect(infos.length).toBeGreaterThanOrEqual(3);
   });
@@ -68,6 +70,21 @@ describe("supabase/preflight.sql", () => {
       const rows = (await populated.query(byTitle(start).query)).rows;
       expect(rows.length, start).toBeGreaterThan(0);
     }
+  });
+
+  it("o SUMMARY devolve UM resultado só, com uma linha por verificação, e zera num banco vazio", async () => {
+    expect(summary).toBeDefined();
+    const rows = (await empty.query<{ verificacao: string; violacoes: string | number }>(summary.query)).rows;
+    expect(rows).toHaveLength(7);
+    expect(rows.map((r) => Number(r.violacoes))).toEqual([0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it("o SUMMARY acusa objetos, schema app, usuários, buckets, arquivos e políticas num projeto com conteúdo", async () => {
+    const rows = (await populated.query<{ verificacao: string; violacoes: string | number }>(summary.query)).rows;
+    const counts = rows.map((r) => Number(r.violacoes));
+    // 1..6 acusam; a 7ª (Realtime) continua 0 porque a base de teste não publica nada.
+    expect(counts.slice(0, 6).every((n) => n > 0)).toBe(true);
+    expect(counts[6]).toBe(0);
   });
 
   it("detecta um único objeto solto no schema public", async () => {

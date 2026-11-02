@@ -128,8 +128,8 @@ Origem: `Site-Luvi` (`CLAUDE.md` e `assets/css`). Tema **único e escuro**, toke
 - Redirecionamentos pós-login passam por `safeNextPath`. Mensagens de login/recuperação são idênticas exista a conta ou não.
 - Usar `createSupabaseAdminClient` (ignora RLS) só em código de servidor, depois de autorizar a operação no próprio código.
 - **Chaves modernas**: `SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_…`) e `SUPABASE_SECRET_KEY` (`sb_secret_…`); os nomes legados (`ANON`/`SERVICE_ROLE`) só como reserva. `classifyKey` identifica o tipo pelo conteúdo e o app recusa chave secreta na variável pública.
-- **E-mails de auth por ambiente**: o app envia `redirectTo = APP_URL/auth/confirm` e os modelos de e-mail usam `{{ .RedirectTo }}` (não `{{ .SiteURL }}`). Em desenvolvimento só `localhost` é aceito; em produção `APP_URL` precisa ser https. Dev e produção usam **projetos Supabase diferentes** (`docs/SUPABASE.md`).
-- `scripts/bootstrap-admin.mjs` é simulação por padrão; `--execute` exige `--project-host` e recusa chave pública e `APP_URL` de produção.
+- **E-mails de auth por ambiente**: o app envia `redirectTo = APP_URL/auth/recovery` (e `/auth/invite` no convite); `src/lib/auth/confirm.ts` trata os dois formatos de link (`?code=` do modelo padrão e `token_hash` do modelo do projeto), então **o app não depende de os modelos de e-mail terem sido editados** (o Supabase só libera a edição com SMTP próprio). Os modelos do projeto usam `{{ .RedirectTo }}` (não `{{ .SiteURL }}`). Lista de Redirect URLs de dev: `http://localhost:3000/auth/*`. Em desenvolvimento só `localhost` é aceito; em produção `APP_URL` precisa ser https. Dev e produção usam **projetos Supabase diferentes** (`docs/SUPABASE.md`).
+- `scripts/bootstrap-admin.mjs` é simulação por padrão; `--execute` exige `--project-host`, recusa chave pública e `APP_URL` de produção, e **imprime o link de convite em vez de enviar e-mail** (`--send-email` envia, exige SMTP).
 
 ## Segurança (valem desde já e são obrigatórias na Fase 2)
 

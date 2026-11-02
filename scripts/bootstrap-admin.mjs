@@ -9,8 +9,11 @@
  *   node scripts/bootstrap-admin.mjs --email voce@luvicompany.com.br --name "Seu Nome"
  *   # 2) teste de conexão, somente leitura (confere a chave secreta e o schema)
  *   node scripts/bootstrap-admin.mjs --email ... --name ... --check-connection
- *   # 3) execução real: cria a organização e ENVIA o convite por e-mail
+ *   # 3) execução real: cria a organização e o administrador e GERA o link de convite, que é
+ *   #    impresso no seu terminal (NENHUM e-mail é enviado; não precisa de SMTP)
  *   node scripts/bootstrap-admin.mjs --email ... --name ... --execute --project-host xxxx.supabase.co
+ *   # 3b) o mesmo, mas ENVIANDO o convite por e-mail pelo Supabase (exige SMTP configurado)
+ *   node scripts/bootstrap-admin.mjs --email ... --name ... --execute --send-email --project-host xxxx.supabase.co
  *
  * Variáveis (do ambiente do terminal, nunca de argumento nem de arquivo versionado):
  *   SUPABASE_URL, SUPABASE_SECRET_KEY (`sb_secret_…`; legado aceito: SUPABASE_SERVICE_ROLE_KEY),
@@ -20,7 +23,9 @@
  *  - exige a chave SECRETA (recusa `sb_publishable_…` e a chave anon legada);
  *  - --execute exige --project-host igual ao host de SUPABASE_URL (evita rodar no projeto errado);
  *  - recusa APP_URL de produção sem --allow-production, e http fora de localhost;
- *  - só roda em banco sem perfis; nenhuma senha é criada ou exibida; a chave nunca é impressa.
+ *  - só roda em banco sem perfis; nenhuma senha é criada ou exibida; a chave nunca é impressa;
+ *  - o link de convite impresso é de uso único e expira (padrão do Auth: 1 hora): trate como
+ *    senha, abra você mesmo e nunca cole em chat, e-mail ou ticket.
  *
  * ATENÇÃO: o modo --execute ainda NÃO foi executado contra um projeto Supabase real.
  */
@@ -29,7 +34,7 @@ import { classifyKey } from "../src/lib/env.ts";
 
 export const PRODUCTION_HOSTS = ["aprova.luvicompany.com.br"];
 
-const FLAGS = new Set(["execute", "check-connection", "allow-production"]);
+const FLAGS = new Set(["execute", "check-connection", "allow-production", "send-email"]);
 
 export function parseArgs(argv) {
   const out = {};
@@ -112,6 +117,7 @@ export function buildPlan(argv, env) {
     appHost,
     email,
     name,
+    sendEmail: args["send-email"] === true,
   };
 }
 
@@ -119,7 +125,8 @@ export function describePlan(plan) {
   return [
     `Projeto Supabase : ${plan.supabaseHost}`,
     `Tipo da chave    : ${plan.keyKind}`,
-    `Link do convite  : ${plan.appUrl}/auth/confirm  (via {{ .RedirectTo }} do modelo de e-mail)`,
+    `Chegada do convite: ${plan.appUrl}/auth/invite`,
+    `Entrega do convite: ${plan.sendEmail ? "e-mail enviado pelo Supabase (exige SMTP)" : "link impresso no terminal (nenhum e-mail é enviado)"}`,
     `Administrador    : ${plan.name} <${plan.email}>`,
     `Modo             : ${plan.mode}`,
   ].join("\n");
@@ -162,25 +169,42 @@ async function main() {
     org = created.data;
   }
 
-  const invited = await admin.auth.admin.inviteUserByEmail(plan.email, {
-    redirectTo: `${plan.appUrl}/auth/confirm`,
-    data: { full_name: plan.name },
-  });
-  if (invited.error) fail(`Falha ao convidar o usuário: ${invited.error.message}`);
+  const redirectTo = `${plan.appUrl}/auth/invite`;
+  const data = { full_name: plan.name };
+  let userId;
+  let inviteUrl = null;
+  if (plan.sendEmail) {
+    const invited = await admin.auth.admin.inviteUserByEmail(plan.email, { redirectTo, data });
+    if (invited.error) fail(`Falha ao convidar o usuário: ${invited.error.message}`);
+    userId = invited.data.user.id;
+  } else {
+    // Gera o convite SEM enviar e-mail. O link usa o token_hash e termina no nosso /auth/invite,
+    // que o valida no servidor (verifyOtp): não depende de modelo de e-mail nem de SMTP.
+    const generated = await admin.auth.admin.generateLink({ type: "invite", email: plan.email, options: { redirectTo, data } });
+    if (generated.error) fail(`Falha ao gerar o convite: ${generated.error.message}`);
+    userId = generated.data.user.id;
+    inviteUrl = `${plan.appUrl}/auth/invite?token_hash=${encodeURIComponent(generated.data.properties.hashed_token)}&type=invite`;
+  }
 
   const profile = await admin.from("profiles").insert({
-    id: invited.data.user.id,
+    id: userId,
     organization_id: org.id,
     full_name: plan.name,
     email: plan.email,
     role: "admin",
   });
   if (profile.error) {
-    await admin.auth.admin.deleteUser(invited.data.user.id); // não deixa conta órfã sem perfil
+    await admin.auth.admin.deleteUser(userId); // não deixa conta órfã sem perfil
     fail(`Falha ao criar o perfil: ${profile.error.message}`);
   }
 
-  console.log(`\nAdministrador convidado: ${plan.email}. Peça para abrir o e-mail e criar a senha.`);
+  if (inviteUrl) {
+    console.log(`\nAdministrador criado: ${plan.email}. Abra este link no navegador para criar a senha.`);
+    console.log("ATENÇÃO: é de uso único, expira e vale como senha. Não cole em chat, e-mail ou ticket.\n");
+    console.log(inviteUrl);
+  } else {
+    console.log(`\nAdministrador convidado: ${plan.email}. Peça para abrir o e-mail e criar a senha.`);
+  }
 }
 
 function fail(message) {
