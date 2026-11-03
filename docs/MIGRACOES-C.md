@@ -1,6 +1,6 @@
 # Migrations das etapas C e D (arquivos, versões e revisão)
 
-Estado em **2026-11-05**: as duas migrations estão **criadas e testadas localmente** (Postgres em memória com as 12 migrations). **Nenhuma foi aplicada em projeto Supabase algum.** Ordem de aplicação pendente no projeto de desenvolvimento, **uma por vez**: **B1 → B2 → C1 → C2** (as duas primeiras estão em `MIGRACOES-B.md`). Sem elas aplicadas, as telas de materiais, o upload e o dashboard do modo real **não leem o banco de desenvolvimento** (faltam colunas e tabelas). O modo demonstração não é afetado.
+Estado em **2026-11-05**: as duas migrations foram testadas localmente e **APLICADAS no projeto de desenvolvimento (DB Aprova Luvi) em 2026-11-05**, junto com a B1 e a B2, **uma por vez** (registro na seção 7). `verify.sql` 28/28 em 0.
 
 ## 1. As duas migrations
 
@@ -57,3 +57,17 @@ drop function if exists public.reorder_version_files(uuid, uuid[]);
 | Versão vazia se a gravação das linhas falhar logo depois de criar a versão 1 | Antes de gravar, o servidor valida tipo, tamanho, assinatura e limites; falha residual deixa a versão 1 vazia (impede excluir o rascunho). Aceito e documentado |
 | `material_files_validate` é AFTER INSERT | Aborta a instrução inteira (mesma transação); as linhas não persistem |
 | Checksum SHA-256 informado pelo navegador | Informativo; o servidor confere tamanho e **assinatura** dos primeiros bytes, não relê o arquivo inteiro |
+
+## 7. Registro da aplicação no DB Aprova Luvi (2026-11-05)
+
+Aplicadas no SQL Editor do projeto `kswnwootbdzlhdvbhhpk` ("DB Aprova Luvi"), com autorização expressa, **uma por vez** (B1, B2, C1, C2), pelo assistente no navegador do app com o usuário logado. Antes: projeto confirmado pela URL e pelo título do painel; nenhuma das quatro aplicada (colunas, tabelas, gatilhos e funções ausentes); estado anterior registrado (2 clientes, 2 projetos, 2 aprovadores, 1 convite, 11 eventos de auditoria, 0 materiais, 0 objetos no bucket). Em cada passo, o **SHA-256 completo do texto colado no editor foi calculado no navegador e comparado ao do arquivo antes de executar**; todas devolveram "Success. No rows returned" e o catálogo foi conferido em seguida.
+
+| Migration | SHA-256 completo | Bytes |
+|---|---|---|
+| B1 | `e420e0eb9e04cd0bcace093cbbe97ede93f424382d5b862dc56aceb535499114` | 7599 |
+| B2 | `20bcbff95dbc4279bf383d06b254e02a13c7a83463fbecf687a20bdff990cf74` | 4248 |
+| C1 | `7797e0d72bccd2540a82f0ce362ef229f6ee9597d1701c57e386ab84a6d8202f` | 5485 |
+| C2 | `0654ad15cc3cde3ea8cced82ac79f9e0e14cc43ac2d8d70bd3a35cf95b4609fc` | 7838 |
+
+O painel avisou "Potential issue detected… destructive operations" só na B1 (o texto tem `delete` dentro do corpo de funções, `revoke` e `create or replace`); confirmado por ser exatamente o texto revisado. Depois das quatro: `supabase/verify.sql` (SHA-256 do texto embrulhado `33216f22…`, 28 blocos, cada um em `count(*)`): **28 blocos, todos em 0**. A validação operacional está em `MODULO-3.md`, seção 14.
+

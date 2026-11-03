@@ -1,6 +1,6 @@
 # Módulo 3 — Gestão de Materiais: plano e acompanhamento
 
-Estado em **2026-11-05**. Módulo implementado e testado localmente (etapas A a F); **faltam aplicar as migrations B1, B2, C1 e C2 no Supabase e validar no banco real** (seção 13).
+Estado em **2026-11-05**. Módulo implementado, **migrations B1, B2, C1 e C2 aplicadas no DB Aprova Luvi e validação operacional com dados fictícios aprovada** (seção 14). Falta apenas o Módulo 4 (aprovação real) para exercitar material enviado/aprovado pela interface.
 
 ## 1. Etapas
 
@@ -573,4 +573,41 @@ O servidor falso do E2E imita Auth, PostgREST **e Storage** (URL assinada, multi
 2. Com `npm run dev` apontando para o projeto de desenvolvimento e **dados fictícios** ("TESTE C"): cadastrar material de cada tipo; subir imagem, PDF, vídeo curto e um carrossel de 3 slides; reordenar e remover; tentar um arquivo com extensão trocada e um acima do limite; interromper a rede no meio de um envio; abrir os arquivos (rota protegida) e conferir que a URL assinada expira.
 3. Conferir no banco (somente leitura): versões, `material_files`, objetos no bucket (sem órfãos), eventos de auditoria sem texto livre e RLS por papel (designer cria, cliente não).
 4. Material aprovado/revisão só pode ser provado no real depois do Módulo 4 (ou forçando o status como administrador do banco, em dados de teste).
+
+---
+
+# 14. Validação integrada do Módulo 3 no Supabase de desenvolvimento (2026-11-05)
+
+**Resultado: aprovada, sem falhas e sem correções de código.** Executada pelo assistente no navegador do app (usuário logado), no projeto **DB Aprova Luvi**, com o `npm run dev` local e **somente dados fictícios** ("TESTE C"; arquivos gerados no próprio navegador: imagens por canvas, um MP4 real gravado de 2 s, um PDF mínimo). Autorização: migrations B1, B2, C1 e C2 aplicadas uma por vez (`MIGRACOES-C.md`, seção 7) e `verify.sql` **28/28 em 0**.
+
+## 14.1 Testes operacionais
+
+| # | Teste | Resultado |
+|---|---|---|
+| 1 | Cadastro de um material de cada tipo (imagem, carrossel, vídeo, PDF) pela interface | **Aprovado**: lista real do banco, com canal e proporção |
+| 2 | Upload real de imagem JPEG (URL assinada, PUT direto do navegador ao Storage real) | **Aprovado**: versão 1 criada, arquivo gravado, pré-visualização renderizada |
+| 3 | Vídeo curto (MP4 real de 79 KB, 2 s) | **Aprovado**: reproduz pela rota protegida (duração 1,98 s); envio de um segundo arquivo **substituiu** o primeiro |
+| 4 | PDF mínimo | **Aprovado**: abre pela rota protegida com `application/pdf` e assinatura `%PDF-`, em nova aba com `rel="noopener noreferrer"` |
+| 5 | Carrossel de 3 slides (JPEG, PNG e WebP) | **Aprovado**: 3 slides em ordem, os três formatos renderizam |
+| 6 | Reordenação e remoção de slides | **Aprovado**: ordem persistida após recarregar; remover o slide 2 apagou o objeto e compactou as posições (1..n) |
+| 7 | Rejeição de arquivos inválidos | **Aprovado**: JPEG com nome e tipo de PDF recusado pela conferência de assinatura (objeto apagado, sem órfão); PNG num material de PDF, PDF no carrossel e formato `.gif` barrados na tela, antes do envio |
+| 8 | Limites | **Aprovado**: carrossel aceita até 10 (9 novos sobre 2 existentes recusados; 8 novos aceitos; o 11º recusado); imagem de 21 MB e vídeo de 51 MB recusados antes de qualquer envio |
+| 9 | Recuperação após falha de rede | **Aprovado**: com o PUT desviado para um host inexistente, o arquivo mostra "Sem conexão com o armazenamento…", **o arquivo anterior da versão é preservado**, e "Tentar de novo" conclui o envio |
+| 10 | Visualização pela rota protegida | **Aprovado**: 302 para URL assinada do Supabase com token; o HTML da página **não contém** nenhum endereço do storage; a URL assinada guardada **expirou** (HTTP 400 aos 147 s, limite 60 s); sem sessão a rota leva ao `/login` e não entrega o arquivo; id inexistente responde 404 |
+| 11 | Persistência de arquivos e versões | **Aprovado** (consulta somente leitura): 4 materiais, 4 versões, 13 arquivos (carrossel 10 com posições 1..10), **13 objetos no bucket = 13 linhas** (0 órfãos, 0 linhas sem objeto, 0 caminhos fora de `{cliente}/{material}/`), tipos MIME e tamanhos corretos, checksum SHA-256 gravado em todos |
+| 12 | Ausência de acesso público indevido | **Aprovado**: sem token, o objeto privado, o caminho `/object/public/` e a listagem do bucket respondem 400; `anon` negado em `materials`, `material_versions`, `material_files`, `material_version_contents`, `approval_requests` e `decisions` e vê 0 objetos do bucket; autenticado **sem perfil** vê 0 linhas e 0 objetos; a equipe (administrador) enxerga os 4 materiais, 13 arquivos e 13 objetos |
+| 13 | Auditoria sem dados pessoais nem conteúdo livre | **Aprovado**: `material.created` ×4, `version.created` ×4, `file.added` ×16; chaves do metadata só `actor_role`, `client_id`, `material_id`; **0** eventos com título, legenda ou nome de arquivo; nenhum evento de material sem autor |
+| 14 | Preservação das permissões RLS e das travas (bloco que termina em erro proposital, **tudo revertido**) | **Aprovado**: o administrador, pela API, **não** altera `status`, `client_id`, posições de arquivo, versões nem cria conteúdo congelado, tíquete ou emite tíquete (todas 42501); com o material forçado a `aprovado` (como dono do banco): título e legenda **bloqueados** (23514), nova versão **bloqueada** ("use a operação de revisão"), datas continuam editáveis; `start_material_revision` com motivo curto **recusada**; com motivo válido **funciona**: 2 versões, material volta a rascunho, **10 arquivos da v1 intactos**, v1 **congelada** com o título, 0 tíquetes restantes, auditoria `material.revision_started` **sem o texto do motivo**; reordenar versão que não é a mais recente **recusado**. Depois do bloco: estado idêntico ao anterior (4 materiais em rascunho, 4 versões, 0 conteúdos, 0 tíquetes, 0 eventos de revisão) |
+| 15 | Dashboard real contra o banco | **Aprovado**: carrega sem erro nem aviso de dados fictícios; "Rascunhos em produção 4", "2 clientes ativos · 2 projetos ativos · 4 materiais" |
+
+## 14.2 Observações
+
+- Os erros 400, `ERR_NAME_NOT_RESOLVED` e 404 no console do navegador vieram das próprias sondagens do teste (URL expirada, acesso sem token, rede simulada, id inexistente).
+- Ao forçar `aprovado` no teste 14, a tentativa de inserir arquivo na versão 1 falhou por **chave duplicada** (posição 5 já ocupada), antes do gatilho de "fora de rascunho"; a regra de "material fora de rascunho" segue coberta pelos testes de banco (`files-versions.test.ts`).
+- O vídeo da primeira tentativa foi um MP4 **sintético** (cabeçalho `ftyp` válido, sem conteúdo reproduzível), depois **substituído** pelo MP4 real; o objeto antigo foi apagado.
+- A aprovação real (material sair de rascunho pela interface) depende do **Módulo 4**; por isso a trava de conteúdo e a revisão foram provadas forçando o status como dono do banco, dentro de uma transação revertida.
+
+## 14.3 Dados de teste que permanecem no banco de desenvolvimento
+
+4 materiais "TESTE C" (imagem, carrossel de 10 slides, vídeo e PDF, todos em rascunho, no cliente "TESTE A2 Casa Aurora"), 4 versões, 13 arquivos (13 objetos no bucket `materials`) e os eventos de auditoria correspondentes (imutáveis). Nada foi excluído do que existia antes (clientes, projetos, aprovadores e os 11 eventos da A.2 intactos).
 
