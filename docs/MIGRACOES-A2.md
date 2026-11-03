@@ -165,4 +165,4 @@ Em **cada passo** a regressão foi conferida: nenhuma tabela sem RLS (16 de 16 d
 - Nenhum dado criado: clientes, projetos, aprovadores, convites e auditoria seguem em 0. Nenhum convite enviado, bootstrap não executado, Auth não alterado.
 - API com as chaves atuais: `anon` recebe 401 (permissão negada) em `approver_invites` e nas três funções novas (como no controle `decide_via_link`); o servidor enxerga `approver_invites` (cache de esquema atualizado).
 
-**Pendente:** o teste manual da seção 3.3 (item 3) no `npm run dev`, com dados fictícios. É ele que grava os primeiros eventos de auditoria e exercita o bloco 22 com dados.
+**Teste manual da seção 3.3 (item 3): executado e aprovado em 2026-11-03**, com dados fictícios, no `npm run dev`: 11 testes aprovados, 11 eventos de auditoria sem nome nem e-mail e `verify.sql` 22/22 em 0 com dados (bloco 22 exercitado). Registro em `docs/MODULO-3.md`, seção 11.

@@ -12,7 +12,7 @@ Estado em **2026-11-02**. Autorizado o início do módulo pelo usuário; **etapa
 | D | Carrosséis com slides ordenados; histórico de versões sem sobrescrever | Não iniciada |
 | E | Dashboard integrado ao Supabase (indicadores com dados reais) | Não iniciada |
 | F | Testes e validações de ponta a ponta, relatório do módulo | Não iniciada |
-| **A.2** | Cadastro de aprovadores (inclusive em vários clientes), preparação de convites, escolha de empresa no portal e endurecimento do banco (cliente arquivado, nome sem diferenciar caixa, auditoria) | **Implementada; migrations M1 a M4 aplicadas no projeto de desenvolvimento em 2026-11-03** (seções 9 e 10; teste manual com dados fictícios pendente) |
+| **A.2** | Cadastro de aprovadores (inclusive em vários clientes), preparação de convites, escolha de empresa no portal e endurecimento do banco (cliente arquivado, nome sem diferenciar caixa, auditoria) | **Implementada; migrations M1 a M4 aplicadas no projeto de desenvolvimento em 2026-11-03** (seções 9, 10 e 11; validação operacional com dados fictícios aprovada em 2026-11-03) |
 
 Regras do módulo (valem para todas as etapas): não reconstruir o que existe; preservar a identidade visual; respeitar os papéis; **validar a autorização no servidor**; **nunca usar a chave secreta para contornar a RLS em operações comuns**; não permitir acesso a arquivos de outros clientes; não sobrescrever versões; validar formato e tamanho; manter os registros consistentes se o upload falhar; **dados de demonstração nunca se misturam a dados reais**; só dados fictícios de teste, nunca arquivos de clientes reais; sem migration remota, push, merge ou deploy sem autorização expressa.
 
@@ -292,7 +292,7 @@ Novas Server Actions: `saveApproverAction`, `setApproverActiveAction`, `linkAppr
 
 # 10. Etapa A.2 — resultado da implementação (2026-11-02)
 
-**Implementada e testada localmente; commit `91c47ef`. As migrations M1 a M4 foram aplicadas no projeto de desenvolvimento em 2026-11-03**, uma por vez, com `verify.sql` (22 blocos) em 0 (`docs/MIGRACOES-A2.md`, seção 6). Falta o teste manual com dados fictícios.
+**Implementada e testada localmente; commit `91c47ef`. As migrations M1 a M4 foram aplicadas no projeto de desenvolvimento em 2026-11-03**, uma por vez, com `verify.sql` (22 blocos) em 0 (`docs/MIGRACOES-A2.md`, seção 6). A validação operacional com dados fictícios foi **aprovada em 2026-11-03** (seção 11).
 
 ## 10.1 O que foi entregue
 
@@ -348,5 +348,63 @@ Notas: o servidor falso do E2E **não prova a RLS** (isso é do teste de banco);
 | 7 | E-mail do aprovador imutável e igual ao do login (comparação normalizada); login não vincula a outro e-mail | Atendido | testes da M2 (grants e gatilho) |
 | 8 | Preparar convite não envia nada, não cria usuário nem token | Atendido | M3 sem colunas de token/e-mail; ação só chama a função |
 | 9 | Nenhuma regressão da etapa A; suíte inteira verde | Atendido | seção 10.3 |
-| 10 | Validação no banco real após autorização | **Atendido** (2026-11-03) | `verify.sql` 22/22 em 0; `MIGRACOES-A2.md` seção 6. Auditoria ainda sem eventos reais (teste manual pendente) |
+| 10 | Validação no banco real após autorização | **Atendido** (2026-11-03) | `verify.sql` 22/22 em 0; `MIGRACOES-A2.md` seção 6. Auditoria exercitada com 11 eventos reais (seção 11) |
 | P | Portal: seleção explícita de empresa, validada no servidor sob RLS, sem escolher o primeiro vínculo | Atendido | `approvers.test.ts` (`pickPortalContext`), `portal/actions.test.ts`, E2E (cookie adulterado ignorado) |
+
+---
+
+# 11. Etapa A.2 — validação operacional com dados fictícios (2026-11-03)
+
+**Resultado: 11 de 11 testes aprovados, nenhuma falha, nenhuma correção necessária.** Executada por Claude no navegador do app, com a sessão do administrador aberta pelo usuário (o assistente não digita senhas), contra o projeto de desenvolvimento **DB Aprova Luvi** (`kswnwootbdzlhdvbhhpk`) com o `npm run dev` local. Os passos 1 a 8 usaram **a interface administrativa**; os passos 9 a 11 usaram **consultas somente de leitura** no SQL Editor. Roteiro de referência: `MIGRACOES-A2.md`, seção 3.3. Nenhuma migration foi executada, nenhum convite foi enviado, nenhum login de terceiros foi criado, nada foi excluído; sem push, merge ou deploy.
+
+## 11.1 Os 11 testes operacionais
+
+| # | Teste | Resultado | Evidência |
+|---|---|---|---|
+| 1 | Cadastro e persistência de dois clientes fictícios | **Aprovado** | "TESTE A2 Casa Aurora" e "TESTE A2 Studio Vento" na lista e no banco (`clients` = 2, ambos ativos) |
+| 2 | Projetos vinculados aos clientes | **Aprovado** | "TESTE A2 Campanha Verao" (Casa Aurora) e "TESTE A2 Lancamento Inverno" (Studio Vento); `projects` = 2 |
+| 3 | Nome duplicado com caixa e espaços | **Aprovado** | `  teste a2   CASA   aurora ` recusado: "Já existe um cliente com esse nome." (nenhum terceiro cliente criado) |
+| 4 | Cadastro de um aprovador de teste | **Aprovado** | "TESTE A2 Pessoa Aprovadora", e-mail `@teste.invalid`, status "Só por link (sem login)" |
+| 5 | Mesmo aprovador em dois clientes | **Aprovado** | vínculo ao Studio Vento pela ação "Vincular pessoa existente"; a tela mostra "Também aprova para: TESTE A2 Casa Aurora"; `approvers` = 2 (uma linha por cliente) |
+| 6 | Desativar um vínculo sem afetar o outro | **Aprovado** | vínculo do Studio Vento "Inativo"; o da Casa Aurora segue "Ativo". Um convite **preparado** (não enviado) nesse vínculo passou a `revogado` sozinho, pelo gatilho da desativação |
+| 7 | Cliente arquivado bloqueia projeto e aprovador novos | **Aprovado** | com o cliente arquivado, os formulários (deixados abertos em outras abas) foram enviados e recusados: "Este cliente está arquivado. Reative-o antes de cadastrar aprovadores." e "…antes de criar projetos."; nada foi criado |
+| 8 | Reativação do cliente | **Aprovado** | a Casa Aurora voltou a ter "Novo projeto" e "Novo aprovador" |
+| 9 | Eventos de auditoria | **Aprovado** | 11 eventos, todos com o administrador como autor (ver 11.3) |
+| 10 | Ausência de nome e e-mail na auditoria | **Aprovado** | busca textual por `@`, "teste", "aurora", "vento", "aprovad", "pessoa" no `metadata`: **0**; chaves existentes: só `actor_role`, `changed`, `client_id`, `status_from`, `status_to`; `ip_hash` vazio |
+| 11 | Permissões e RLS preservadas | **Aprovado** | `verify.sql` 22/22 em 0 e comportamento por papel (ver 11.2 e 11.4) |
+
+O convite preparado e a revogação **não** fazem parte dos 11 pedidos: foram executados a mais, do roteiro 3.3, e não enviam e-mail (a tela avisa).
+
+## 11.2 As 22 verificações SQL
+
+`supabase/verify.sql` (22 blocos `-- CHECK:`), cada bloco embrulhado em `select count(*) from (…)`: **os 22 devolveram 0 linhas**, agora **com dados**. O texto executado teve o SHA-256 conferido contra o gerado a partir do arquivo do repositório antes da execução. O bloco 22 (metadata de auditoria sem dado pessoal), que na aplicação das migrations tinha passado com a tabela vazia, **passou com os 11 eventos reais**.
+
+## 11.3 Os 11 eventos de auditoria criados
+
+`client.created` ×2 · `project.created` ×2 · `approver.created` · `approver.linked` · `approver_invite.prepared` · `approver.deactivated` · `approver_invite.revoked` · `client.archived` · `client.reactivated`.
+
+Todos com `actor_profile_id` preenchido (o administrador), `actor_approver_id` vazio, `ip_hash` vazio e `metadata` só com ids e nomes de colunas: `client_id`, `actor_role`, `changed` (por exemplo `["active"]`) e, na revogação do convite, `status_from = preparado` e `status_to = revogado`.
+
+## 11.4 Permissões e RLS (consultas de leitura num bloco que termina em erro proposital, sem gravar nada)
+
+| Papel simulado | Resultado |
+|---|---|
+| `anon` | `permission denied` (42501) em `clients`, `projects`, `approvers`, `approver_invites` e `audit_events` |
+| `authenticated` **sem perfil** (sessão sem `sub` de perfil) | 0 linhas em todas as cinco tabelas (a RLS filtra) |
+| `authenticated` como o administrador | `clients` 2, `projects` 2, `approvers` 2, `approver_invites` 1, `audit_events` 11 |
+| Administrador, escrita direta | negadas (42501): inserir e apagar em `audit_events`, inserir em `approver_invites`, alterar `approvers.profile_id` e alterar `approvers.email` |
+
+Depois do bloco, as contagens seguiam idênticas (2, 2, 2, 1, 11).
+
+## 11.5 Limitações identificadas
+
+1. **Papéis sem teste com usuários reais.** Só existe o administrador no Auth e nenhum outro login foi criado (por regra). **Designer, atendimento e aprovador/cliente não foram testados com usuários reais**: o isolamento entre eles segue provado apenas pelos **198 testes de banco** (Postgres em memória), e a simulação acima cobre só anônimo, autenticado sem perfil e administrador. Recomenda-se repetir um teste mínimo com um usuário de cada papel quando houver convite real (Fase 3, com SMTP).
+2. **A recusa do banco não foi exercitada isoladamente.** As mensagens dos testes 3 e 7 vêm da Server Action; não é possível saber, pela interface, se foi ela ou o banco que recusou. A guarda `*_guard_active_client` e o índice `clients_org_name_ci_key` **existem** (blocos 19 e 20) e são exercitados pelos testes de banco, mas não tentei burlar o app (escrever fora dele) no banco real.
+3. **Portal e login do aprovador não exercitados** (nenhum aprovador de teste tem login): a escolha de empresa por mais de um vínculo continua provada só por testes automatizados e E2E com servidor falso.
+4. **Convite só registra intenção:** o envio (`enviado`/`aceito`) depende de SMTP/Resend (Fase 3) e de `service_role`.
+5. **Observação de baixa prioridade, não confirmada:** nas recusas do teste 7 os campos dos formulários apareceram vazios, ao passo que no teste 3 o texto digitado permaneceu. Provavelmente é efeito de eu ter preenchido os campos por script (não digitando); vale conferir à mão na Etapa B.
+6. **Iniciais:** os dois clientes ficaram com "TA", derivadas do prefixo "TESTE A2" (comportamento esperado).
+
+## 11.6 Dados fictícios que permanecem no banco de desenvolvimento
+
+Por decisão do usuário, **nada foi excluído**. Ficam no DB Aprova Luvi: 2 clientes (ambos ativos), 2 projetos, 2 aprovadores (mesma pessoa, uma linha por cliente; a do Studio Vento **inativa**), 1 convite `revogado` e **11 eventos de auditoria**. Os eventos são **imutáveis** (gatilhos e falta de grant): o app não consegue apagá-los, e o expurgo seria procedimento excepcional (`AUDITORIA.md`). O app também não exclui clientes, projetos nem aprovadores (só arquivar/desativar). Todos usam o prefixo "TESTE A2" e e-mails `@teste.invalid`; nenhum dado real. As consultas avulsas rodaram no SQL Editor sem salvar nada além de um rascunho de consulta privado do próprio painel.
