@@ -10,9 +10,12 @@
 --    (due_date e publish_date) continuam editáveis (reagendar não altera a arte nem o texto).
 -- 4) Material novo não pode ser cadastrado em cliente arquivado (mesma guarda de projetos e
 --    aprovadores, vale também para o service_role).
--- 5) Material APROVADO não volta a rascunho por uma simples nova versão: a criação de versão
---    sobre material aprovado exige a operação explícita de revisão (a ser criada com as versões,
---    etapa D), que sinaliza `app.revision_in_progress = 'on'` dentro da própria transação.
+-- 5) Material APROVADO não volta a rascunho por uma simples nova versão nem por UPDATE direto de
+--    status: só a operação explícita de revisão (etapa D) consegue, e ela precisa de um TÍQUETE
+--    (app.revision_tickets). O tíquete é vinculado a UM material, a UMA transação (txid) e a QUEM
+--    agiu (auth.uid()), é de uso único e só é emitido por app.grant_revision_ticket(), função
+--    interna que nenhum papel da API executa. Não existe mais um "sinal" (configuração de sessão)
+--    que qualquer código consiga ligar: um set_config sozinho não destrava nada.
 
 alter table public.materials
   add column caption text not null default '' check (char_length(caption) <= 2200),
@@ -51,8 +54,76 @@ create trigger materials_guard_content before update on public.materials
 create trigger materials_guard_active_client before insert on public.materials
   for each row execute function app.guard_active_client();
 
+-- Tíquetes da operação de revisão. Tabela do schema app (fora da API), SEM nenhum privilégio para
+-- anon, authenticated nem service_role e com RLS ligada e nenhuma política: só o dono (as funções
+-- SECURITY DEFINER abaixo) lê e escreve.
+create table app.revision_tickets (
+  material_id uuid not null,
+  txid bigint not null,
+  actor uuid,
+  created_at timestamptz not null default now(),
+  primary key (material_id, txid)
+);
+revoke all on table app.revision_tickets from public, anon, authenticated, service_role;
+alter table app.revision_tickets enable row level security;
+
+-- Emite o tíquete para o material, nesta transação e para quem está agindo. Só é chamada por
+-- outra função SECURITY DEFINER (a operação de revisão, etapa D). Limpa tíquetes de outras
+-- transações.
+create function app.grant_revision_ticket(p_material_id uuid) returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  delete from app.revision_tickets where txid <> txid_current();
+  insert into app.revision_tickets (material_id, txid, actor)
+  values (p_material_id, txid_current(), auth.uid())
+  on conflict (material_id, txid) do nothing;
+end;
+$$;
+revoke execute on function app.grant_revision_ticket(uuid) from public, anon, authenticated, service_role;
+
+create function app.has_revision_ticket(p_material_id uuid) returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from app.revision_tickets t
+    where t.material_id = p_material_id
+      and t.txid = txid_current()
+      and t.actor is not distinct from auth.uid()
+  )
+$$;
+revoke execute on function app.has_revision_ticket(uuid) from public, anon, authenticated, service_role;
+
+-- Material aprovado: o status só muda com o tíquete, e só para rascunho (a revisão). O tíquete é
+-- consumido aqui (uso único). Vale para todos, inclusive o service_role.
+create function app.materials_guard_status() returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if old.status = 'aprovado' and new.status is distinct from old.status then
+    if new.status <> 'rascunho' or not app.has_revision_ticket(old.id) then
+      raise exception 'material aprovado: o status só muda pela operação de revisão'
+        using errcode = '23514';
+    end if;
+    delete from app.revision_tickets where material_id = old.id and txid = txid_current();
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function app.materials_guard_status() from public, anon, authenticated, service_role;
+
+create trigger materials_guard_status before update of status on public.materials
+  for each row execute function app.materials_guard_status();
+
 -- Mesma função da migration 1 (core_schema), com UMA regra a mais: material aprovado não ganha
--- versão nova sem a operação explícita de revisão.
+-- versão nova sem o tíquete da operação explícita de revisão.
 create or replace function app.versions_before_insert() returns trigger
 language plpgsql
 security definer
@@ -72,7 +143,7 @@ begin
   if not found then
     raise exception 'material inválido para esta versão';
   end if;
-  if v_status = 'aprovado' and coalesce(current_setting('app.revision_in_progress', true), '') <> 'on' then
+  if v_status = 'aprovado' and not app.has_revision_ticket(new.material_id) then
     raise exception 'material aprovado: use a operação de revisão para criar uma nova versão'
       using errcode = '23514';
   end if;

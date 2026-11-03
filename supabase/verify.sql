@@ -169,9 +169,9 @@ where metadata ?| array['name', 'email', 'full_name', 'job_title', 'note', 'body
 -- de aplicar as duas migrations da etapa B; antes delas, os blocos "ausente" devolvem linhas.
 -- ---------------------------------------------------------------------------
 
--- CHECK: gatilhos de material ausentes (trava de conteúdo e guarda de cliente arquivado)
+-- CHECK: gatilhos de material ausentes (trava de conteúdo, trava de status e guarda de cliente arquivado)
 select t.nome as gatilho
-from (values ('materials_guard_content'), ('materials_guard_active_client')) as t(nome)
+from (values ('materials_guard_content'), ('materials_guard_status'), ('materials_guard_active_client')) as t(nome)
 where not exists (
   select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
   where c.relname = 'materials' and g.tgname = t.nome and not g.tgisinternal
@@ -196,3 +196,21 @@ where has_column_privilege('authenticated', 'public.materials', c.col, 'INSERT')
 union all
 select 'anon com privilégio em materials'
 where has_any_column_privilege('anon', 'public.materials', 'SELECT,INSERT,UPDATE');
+
+-- CHECK: tabelas do schema app acessíveis pela API ou sem RLS (os tíquetes de revisão não podem ser lidos nem forjados)
+select c.relname as tabela
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'app' and c.relkind = 'r'
+  and (not c.relrowsecurity
+       or has_table_privilege('anon', c.oid, 'SELECT,INSERT,UPDATE,DELETE')
+       or has_table_privilege('authenticated', c.oid, 'SELECT,INSERT,UPDATE,DELETE')
+       or has_table_privilege('service_role', c.oid, 'SELECT,INSERT,UPDATE,DELETE'));
+
+-- CHECK: funções internas de tíquete e de trava executáveis por algum papel da API (nenhuma pode ser)
+select p.proname as funcao, r.rolname as papel
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+cross join (values ('anon'), ('authenticated'), ('service_role')) as r(rolname)
+where n.nspname = 'app'
+  and p.proname in ('grant_revision_ticket', 'has_revision_ticket', 'materials_guard_status', 'materials_guard_content')
+  and has_function_privilege(r.rolname, p.oid, 'EXECUTE');

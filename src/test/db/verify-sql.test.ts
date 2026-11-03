@@ -41,6 +41,29 @@ describe("supabase/verify.sql", () => {
     });
   }
 
+  it("DETECTA tíquete de revisão exposto à API ou função interna executável (blocos do schema app)", async () => {
+    const table = checks.find((c) => c.title.startsWith("tabelas do schema app acessíveis"))!;
+    const functions = checks.find((c) => c.title.startsWith("funções internas de tíquete"))!;
+    await db.exec("grant select on app.revision_tickets to authenticated");
+    try {
+      expect((await db.query(table.query)).rows).toEqual([{ tabela: "revision_tickets" }]);
+    } finally {
+      await db.exec("revoke all on app.revision_tickets from authenticated");
+    }
+    await db.exec("alter table app.revision_tickets disable row level security");
+    try {
+      expect((await db.query(table.query)).rows).toEqual([{ tabela: "revision_tickets" }]);
+    } finally {
+      await db.exec("alter table app.revision_tickets enable row level security");
+    }
+    await db.exec("grant execute on function app.grant_revision_ticket(uuid) to service_role");
+    try {
+      expect((await db.query(functions.query)).rows).toEqual([{ funcao: "grant_revision_ticket", papel: "service_role" }]);
+    } finally {
+      await db.exec("revoke execute on function app.grant_revision_ticket(uuid) from service_role");
+    }
+  });
+
   it("DETECTA uma violação real (o verificador não é decorativo)", async () => {
     await db.exec("grant select on public.approval_links to anon");
     try {

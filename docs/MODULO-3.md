@@ -7,7 +7,7 @@ Estado em **2026-11-02**. Autorizado o início do módulo pelo usuário; **etapa
 | Etapa | Escopo | Estado |
 |---|---|---|
 | **A** | Clientes (cadastro, edição, listagem, arquivamento) e projetos vinculados a clientes | **Concluída** (este documento) |
-| **B** | Cadastro de materiais: título, legenda, descrição, formato (tipo), proporção, canal, datas; exclusão controlada de rascunhos | **Implementada localmente; migrations B1 e B2 NÃO aplicadas; não commitada** (seção 12) |
+| **B** | Cadastro de materiais: título, legenda, descrição, formato (tipo), proporção, canal, datas; exclusão controlada de rascunhos | **Implementada e commitada (`13ce79a`); migrations B1 e B2 NÃO aplicadas; endurecimento da B1 (tíquete de revisão) ainda sem commit** (seção 12) |
 | C | Upload privado e seguro de imagens, vídeos e PDFs; consistência em caso de falha | Não iniciada |
 | D | Carrosséis com slides ordenados; histórico de versões sem sobrescrever | Não iniciada |
 | E | Dashboard integrado ao Supabase (indicadores com dados reais) | Não iniciada |
@@ -413,7 +413,7 @@ Por decisão do usuário, **nada foi excluído**. Ficam no DB Aprova Luvi: 2 cli
 
 # 12. Etapa B — Cadastro de materiais (implementada em 2026-11-04; migrations NÃO aplicadas)
 
-**Estado:** implementada e testada localmente; **não commitada**. As duas migrations (B1 e B2, `MIGRACOES-B.md`) **não foram aplicadas** em nenhum projeto Supabase: até a aplicação, as telas `/admin/materiais` do modo real não leem o projeto de desenvolvimento (faltam as colunas novas). Nada de upload, carrossel, versões, aprovação ou notificações foi implementado.
+**Estado:** implementada e testada localmente; commitada em `13ce79a`, **exceto o endurecimento da B1** (tíquete de revisão, seção 12.2 e `MIGRACOES-B.md`, seção 6), que aguarda autorização de commit. As duas migrations (B1 e B2, `MIGRACOES-B.md`) **não foram aplicadas** em nenhum projeto Supabase: até a aplicação, as telas `/admin/materiais` do modo real não leem o projeto de desenvolvimento (faltam as colunas novas). Nada de upload, carrossel, versões, aprovação ou notificações foi implementado.
 
 ## 12.1 Decisões aprovadas (e como ficaram)
 
@@ -429,6 +429,7 @@ Por decisão do usuário, **nada foi excluído**. Ficam no DB Aprova Luvi: 2 cli
 
 ## 12.2 O que foi entregue
 
+- **Segurança da revisão (revisão de 2026-11-04):** o sinal `app.revision_in_progress` se mostrou forjável e foi **substituído por tíquete** vinculado a material, transação e usuário, emitido só por função interna; `UPDATE` direto de status de material aprovado também passou a exigir o tíquete (`MIGRACOES-B.md`, seção 6).
 - **Migrations B1 e B2** (`supabase/migrations/20261104120000_…` e `…120100_…`; conteúdo, hashes e procedimento em `MIGRACOES-B.md`) e `verify.sql` com 25 blocos.
 - **Grants revisados:** o app não altera diretamente `status`, `id`, `project_id`, `client_id`, `type`, `created_by`, `created_at` nem `updated_at` de `materials` (testes de catálogo, de banco e `verify.sql` bloco 25).
 - **`/admin/materiais` (modo real):** lista com busca por título, filtros por cliente, projeto (em cascata), status e tipo, paginação de 20 em 20, e "Novo material" em diálogo. **`/admin/materiais/[id]`:** legenda (com quebras de linha), descrição, proporção, canal, datas, nota sobre arquivos (etapa C), "Editar" e "Excluir" (só rascunho sem versão). No modo demonstração as duas telas continuam com os dados fictícios da Fase 1.
@@ -449,31 +450,31 @@ Como a trava só cobre o material **vivo**, o que foi mostrado numa versão prec
 
 ## 12.4 Operação explícita de revisão (planejada, não implementada)
 
-Problema hoje: `app.versions_before_insert()` voltava o material a rascunho em **qualquer** nova versão, inclusive de material aprovado. A B1 já fecha isso: material `aprovado` recusa nova versão sem o sinal `app.revision_in_progress = 'on'`. Falta a função que liga o sinal (etapa D):
+Problema hoje: `app.versions_before_insert()` voltava o material a rascunho em **qualquer** nova versão, inclusive de material aprovado. A B1 já fecha isso: material `aprovado` recusa nova versão e mudança de status sem um **tíquete** (`app.revision_tickets`, vinculado a material, transação e usuário; `MIGRACOES-B.md`, seção 6). O antigo sinal `app.revision_in_progress` foi removido por ser forjável. Falta a função que emite o tíquete (etapa D):
 
 `public.start_material_revision(p_material_id uuid, p_reason text)` — `SECURITY DEFINER`, `search_path = ''`, `revoke … from public, anon`, só equipe com acesso ao cliente:
 
 1. Aceita só material `aprovado` ou `alteracao` e **sem** solicitação aberta; para `aprovado`, exige o motivo (curto, validado) e a confirmação na tela (a decisão anterior continua valendo no histórico).
-2. Liga `app.revision_in_progress` **na transação**, cria a próxima versão (copiando a numeração e **sem tocar** nas versões, arquivos, decisões nem cópias de conteúdo anteriores), devolve o material a `rascunho` e desliga o sinal.
+2. Chama `app.grant_revision_ticket(p_material_id)` **na própria transação** (única função autorizada a emitir tíquete), cria a próxima versão (**sem tocar** nas versões, arquivos, decisões nem cópias de conteúdo anteriores) e devolve o material a `rascunho`; o tíquete é consumido pelo gatilho de status (uso único).
 3. Audita `material.revision_started` (`status_from`, `status_to`; **sem** o texto do motivo no metadata, só o tamanho ou um código; o motivo fica numa coluna imutável da versão).
-4. Testes: material aprovado recusa nova versão por qualquer outro caminho; a função preserva versões, decisões e cópias; o sinal não vaza para a transação seguinte; designer e atendimento podem, aprovador não; `verify.sql` ganha o bloco da função (só `authenticated` e `service_role`).
+4. Testes: material aprovado recusa nova versão por qualquer outro caminho; a função preserva versões, decisões e cópias; o tíquete não vale em outra transação, outro material ou outro usuário; designer e atendimento podem, aprovador não; `verify.sql` ganha o bloco da função (só `authenticated` e `service_role`).
 
 ## 12.5 Arquivos
 
 **Criados (17):** `supabase/migrations/20261104120000_materials_content_and_guards.sql`, `supabase/migrations/20261104120100_audit_materials.sql`, `docs/MIGRACOES-B.md`; `src/lib/materials/{schema,selects,queries,schema.test,queries.test}.ts`; `src/app/admin/materiais/{actions.ts,actions.test.ts}`; `src/components/materials/{material-form-dialog,delete-material-button,material-filters,materials-list}.tsx` e `materials-ui.test.tsx`; `src/test/db/materials-b.test.ts`; `e2e/materiais.spec.ts`.
 
-**Modificados (15):** `supabase/verify.sql` (25 blocos), `src/app/admin/materiais/page.tsx` e `[id]/page.tsx` (real + demonstração), `src/lib/clients/errors.ts` (entidade "material" e mensagens das travas), `src/lib/clients/schema.ts` (exporta `squash` e `isRealDate`), `src/components/auth/auth-layout.tsx` (tom "aviso" no `Notice`), `src/components/clients/list-filters.tsx` (remonta o formulário) e `clients-ui.test.tsx`, `src/test/db/privileges.test.ts`, `src/test/no-secret-key.test.ts`, `e2e/support/mock-supabase.mjs` (materiais), `playwright.config.ts` (projeto `materiais-real`), `docs/*` e `CLAUDE.md`.
+**Modificados (15):** `supabase/verify.sql` (27 blocos), `src/app/admin/materiais/page.tsx` e `[id]/page.tsx` (real + demonstração), `src/lib/clients/errors.ts` (entidade "material" e mensagens das travas), `src/lib/clients/schema.ts` (exporta `squash` e `isRealDate`), `src/components/auth/auth-layout.tsx` (tom "aviso" no `Notice`), `src/components/clients/list-filters.tsx` (remonta o formulário) e `clients-ui.test.tsx`, `src/test/db/privileges.test.ts`, `src/test/no-secret-key.test.ts`, `e2e/support/mock-supabase.mjs` (materiais), `playwright.config.ts` (projeto `materiais-real`), `docs/*` e `CLAUDE.md`.
 
 ## 12.6 Testes
 
 | Verificação | Resultado |
 |---|---|
 | Lint e `tsc` | Limpos |
-| Vitest (suíte inteira) | **621 aprovados em 37 arquivos** (antes: 511 em 32) |
-| — banco (Postgres em memória, 10 migrations) | **235**; 34 novos em `materials-b.test.ts` (grants por coluna, cadastro por papel, FK composta, limites de legenda e proporção, cliente arquivado até para o servidor, trava de conteúdo por status e por campo, aprovado sem volta a rascunho, sinal de revisão restrito à transação, exclusão, auditoria sem texto livre, só o admin lê); +1 em `privileges.test`; +3 blocos do `verify.sql` |
+| Vitest (suíte inteira) | **636 aprovados em 37 arquivos** (antes: 511 em 32) |
+| — banco (Postgres em memória, 10 migrations) | **250**; 46 novos em `materials-b.test.ts` (grants por coluna, cadastro por papel, FK composta, limites de legenda e proporção, cliente arquivado até para o servidor, trava de conteúdo por status e por campo, aprovado sem volta a rascunho, sinal de revisão restrito à transação, exclusão, auditoria sem texto livre, só o admin lê); +1 em `privileges.test`; +5 blocos do `verify.sql` (27) e 1 teste de detecção dos blocos do schema `app` |
 | — validação, consultas, ações | 18 + 11 + 21 |
 | — componentes | 21 novos (+1 em clientes) |
-| Prova de que os testes não são vazios | sem a B2, 2 testes falham; sem B1 e B2, 30 falham; sem a remontagem dos filtros, os 2 testes de "Limpar" falham |
+| Prova de que os testes não são vazios | sem a B2, 2 testes falham; sem B1 e B2, a maioria falha; 4 mutações do tíquete são detectadas; sem a remontagem dos filtros, os 2 testes de "Limpar" falham |
 | Build de produção isolado | 19 rotas, sem avisos |
 | E2E (Playwright, 4 servidores) | **95 de 95** (83 anteriores + 12 novos de materiais) |
 
@@ -499,7 +500,7 @@ Limites do que foi provado: o servidor falso do E2E **não prova a RLS** nem as 
 ## 12.8 Pendências e riscos
 
 1. **Aplicar B1 e B2** no projeto de desenvolvimento (só com autorização expressa, uma por vez) e rodar o teste operacional com dados "TESTE B"; depois validar as consultas com `select` embutido contra o PostgREST real.
-2. **Commit** aguardando autorização.
+2. **Commit do endurecimento da B1** (tíquete de revisão) aguardando autorização.
 3. A trava de conteúdo só pode ser vista no banco real quando um material sair de rascunho (Módulo 4); até lá, é provada pelos testes de banco.
 4. Regra de projeto concluído só no servidor (12.1, item 5).
 5. Sem arquivos: o material fica `rascunho` até as etapas C e D; o portal não mostra nada (a RLS só mostra material enviado).

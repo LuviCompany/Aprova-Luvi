@@ -279,25 +279,140 @@ describe("material aprovado não volta a rascunho por uma simples nova versão",
     expect(await q("select 1 from public.material_versions where material_id = $1", [m.materialId])).toHaveLength(1);
   });
 
-  it("a operação explícita de revisão (sinal da transação) cria a versão, volta a rascunho e mantém a v1", async () => {
+  // ---- Tíquete de revisão (app.revision_tickets): o que impede contornar a proteção do material aprovado.
+  /** Roda o SQL numa transação como dono do banco; confirma se deu certo, desfaz se falhar. Devolve o erro ou null. */
+  async function inTx(sql: string): Promise<string | null> {
+    try {
+      await db.exec(`begin; ${sql}`);
+      await db.exec("commit");
+      return null;
+    } catch (error) {
+      await db.exec("rollback");
+      return (error as Error).message;
+    }
+  }
+  const insertVersionSql = (materialId: string, by: string) =>
+    `insert into public.material_versions (material_id, client_id, note, created_by) values ('${materialId}', '${IDS.clienteA}', 'revisão', '${by}');`;
+  const asDesignerSql = `select set_config('request.jwt.claim.sub', '${IDS.designer}', true); set local role authenticated;`;
+  const approved = async () => {
     const m = await createMaterial(db, { clientId: IDS.clienteA, projectId: IDS.projetoA });
     await setStatus(m.materialId, "aprovado");
-    await db.exec(`
-      begin;
-      select set_config('app.revision_in_progress', 'on', true);
-      insert into public.material_versions (material_id, client_id, note) values ('${m.materialId}', '${IDS.clienteA}', 'revisão');
-      commit;
-    `);
-    const versions = await q<{ number: number; note: string }>(
-      "select number, note from public.material_versions where material_id = $1 order by number",
-      [m.materialId],
-    );
+    return m.materialId;
+  };
+  const statusOf = async (id: string) => (await q<{ status: string }>("select status from public.materials where id = $1", [id]))[0].status;
+  const versionCount = async (id: string) => (await q("select 1 from public.material_versions where material_id = $1", [id])).length;
+  const ticketsFor = async (id: string) => (await q("select 1 from app.revision_tickets where material_id = $1", [id])).length;
+
+  it("o antigo sinal app.revision_in_progress NÃO destrava nada, nem como dono, nem como designer, nem em nível de sessão", async () => {
+    const id = await approved();
+    expect(await inTx(`select set_config('app.revision_in_progress', 'on', true); ${insertVersionSql(id, IDS.designer)}`)).toMatch(/operação de revisão/);
+    expect(
+      await inTx(`select set_config('app.revision_in_progress', 'on', true); ${asDesignerSql} ${insertVersionSql(id, IDS.designer)}`),
+    ).toMatch(/operação de revisão/);
+    await db.exec("select set_config('app.revision_in_progress', 'on', false)"); // vaza para a sessão inteira
+    try {
+      expect(await addVersion(IDS.designer, id)).toMatch(/operação de revisão/);
+      expect(await db.asService(() => errorOf(() => db.query(`update public.materials set status = 'rascunho' where id = $1`, [id])))).toMatch(
+        /operação de revisão/,
+      );
+    } finally {
+      await db.exec("select set_config('app.revision_in_progress', '', false)");
+    }
+    expect(await statusOf(id)).toBe("aprovado");
+    expect(await versionCount(id)).toBe(1);
+  });
+
+  it("com o tíquete (emitido pela função interna) a revisão cria a v2, volta a rascunho, consome o tíquete e preserva a v1 e seus arquivos", async () => {
+    const id = await approved();
+    expect(await inTx(`select app.grant_revision_ticket('${id}'); ${insertVersionSql(id, IDS.designer)}`)).toBeNull();
+    const versions = await q<{ number: number }>("select number from public.material_versions where material_id = $1 order by number", [id]);
     expect(versions.map((v) => v.number)).toEqual([1, 2]);
-    const [status] = await q<{ status: string }>("select status from public.materials where id = $1", [m.materialId]);
-    expect(status.status).toBe("rascunho");
-    // O sinal vale só dentro da transação: não vaza para a próxima.
-    await setStatus(m.materialId, "aprovado");
-    expect(await addVersion(IDS.designer, m.materialId)).toMatch(/operação de revisão/);
+    expect(await statusOf(id)).toBe("rascunho");
+    expect(await ticketsFor(id)).toBe(0); // uso único
+    expect(await q("select 1 from public.material_files where material_id = $1", [id])).toHaveLength(1); // arquivo da v1 intacto
+    // Depois da revisão, aprovar de novo e tentar outra versão volta a exigir tíquete.
+    await setStatus(id, "aprovado");
+    expect(await addVersion(IDS.designer, id)).toMatch(/operação de revisão/);
+  });
+
+  it("o tíquete vale para quem agiu: emitido para o designer, o designer usa; emitido sem usuário (servidor), o designer não usa", async () => {
+    const mine = await approved();
+    expect(
+      await inTx(`select set_config('request.jwt.claim.sub', '${IDS.designer}', true); select app.grant_revision_ticket('${mine}'); ${asDesignerSql} ${insertVersionSql(mine, IDS.designer)}`),
+    ).toBeNull();
+    expect(await statusOf(mine)).toBe("rascunho");
+
+    const other = await approved();
+    expect(await inTx(`select app.grant_revision_ticket('${other}'); ${asDesignerSql} ${insertVersionSql(other, IDS.designer)}`)).toMatch(
+      /operação de revisão/,
+    );
+    expect(await statusOf(other)).toBe("aprovado");
+  });
+
+  it("o tíquete é de UM material: o de outro material não serve", async () => {
+    const a = await approved();
+    const b = await approved();
+    expect(await inTx(`select app.grant_revision_ticket('${a}'); ${insertVersionSql(b, IDS.designer)}`)).toMatch(/operação de revisão/);
+    expect(await statusOf(b)).toBe("aprovado");
+    expect(await versionCount(b)).toBe(1);
+  });
+
+  it("o tíquete é de UMA transação: um tíquete de transação anterior não serve e é limpo na próxima emissão", async () => {
+    const a = await approved();
+    expect(await inTx(`select app.grant_revision_ticket('${a}');`)).toBeNull(); // confirmado, mas sem uso
+    expect(await ticketsFor(a)).toBe(1);
+    expect(await addVersion(IDS.designer, a)).toMatch(/operação de revisão/);
+    expect(await inTx(insertVersionSql(a, IDS.designer))).toMatch(/operação de revisão/);
+    const b = await approved();
+    expect(await inTx(`select app.grant_revision_ticket('${b}');`)).toBeNull();
+    expect(await ticketsFor(a)).toBe(0); // limpo pela emissão seguinte
+    await inTx(`delete from app.revision_tickets;`);
+  });
+
+  it("os papéis da API não emitem, consultam nem forjam tíquetes (anon, authenticated e service_role)", async () => {
+    const id = await approved();
+    const attempts = [
+      `select app.grant_revision_ticket('${id}')`,
+      `select app.has_revision_ticket('${id}')`,
+      `insert into app.revision_tickets (material_id, txid, actor) values ('${id}', txid_current(), null)`,
+      "select * from app.revision_tickets",
+      "delete from app.revision_tickets",
+    ];
+    for (const run of [(fn: () => Promise<string | null>) => db.asUser(IDS.admin, fn), (fn: () => Promise<string | null>) => db.asService(fn), (fn: () => Promise<string | null>) => db.asAnon(fn)]) {
+      for (const sql of attempts) {
+        expect(await run(() => errorOf(() => db.query(sql))), sql).toMatch(/permission denied/);
+      }
+    }
+    expect(await versionCount(id)).toBe(1);
+    expect(await q("select relrowsecurity from pg_class where oid = 'app.revision_tickets'::regclass")).toEqual([{ relrowsecurity: true }]);
+  });
+
+  it("material aprovado: UPDATE direto de status é recusado para todos; com tíquete só vai para rascunho, uma vez", async () => {
+    const id = await approved();
+    for (const target of ["rascunho", "aguardando", "alteracao"]) {
+      expect(await db.asService(() => errorOf(() => db.query("update public.materials set status = $2 where id = $1", [id, target]))), target).toMatch(
+        /operação de revisão/,
+      );
+      expect(await errorOf(() => db.query("update public.materials set status = $2 where id = $1", [id, target])), `dono ${target}`).toMatch(/operação de revisão/);
+    }
+    // Tíquete válido, mas destino que não é rascunho: recusado.
+    expect(await inTx(`select app.grant_revision_ticket('${id}'); update public.materials set status = 'alteracao' where id = '${id}';`)).toMatch(/operação de revisão/);
+    // Tíquete válido e rascunho: passa e o tíquete some; um segundo retorno na mesma transação exige novo tíquete.
+    expect(
+      await inTx(`select app.grant_revision_ticket('${id}'); update public.materials set status = 'rascunho' where id = '${id}'; update public.materials set status = 'aprovado' where id = '${id}'; update public.materials set status = 'rascunho' where id = '${id}';`),
+    ).toMatch(/operação de revisão/);
+    expect(await inTx(`select app.grant_revision_ticket('${id}'); update public.materials set status = 'rascunho' where id = '${id}';`)).toBeNull();
+    expect(await statusOf(id)).toBe("rascunho");
+    expect(await ticketsFor(id)).toBe(0);
+  });
+
+  it("as funções do tíquete e do status não são executáveis por nenhum papel da API", async () => {
+    for (const fn of ["app.grant_revision_ticket(uuid)", "app.has_revision_ticket(uuid)", "app.materials_guard_status()", "app.materials_guard_content()"]) {
+      for (const role of ["anon", "authenticated", "service_role"]) {
+        const [row] = await q<{ ok: boolean }>(`select has_function_privilege('${role}', '${fn}', 'EXECUTE') as ok`);
+        expect(row.ok, `${role} ${fn}`).toBe(false);
+      }
+    }
   });
 
   it("o fluxo já existente continua: alteração pedida -> nova versão -> rascunho", async () => {
@@ -428,5 +543,124 @@ describe("o aprovador só vê material enviado", () => {
     expect(rows.map((r) => r.id)).toContain(sent.materialId);
     expect(rows.map((r) => r.id)).not.toContain(hidden);
     expect(await db.asUser(IDS.userClienteB, async () => (await db.query("select 1 from public.materials where id = $1", [sent.materialId])).rows)).toHaveLength(0);
+  });
+});
+
+/**
+ * Modelo da futura operação de revisão (etapa D): uma função SECURITY DEFINER, exposta ao app, que emite o
+ * tíquete e cria a versão na MESMA transação. Definida só aqui, no banco de testes (não é uma migration), para
+ * provar que o desenho funciona sem abrir nada à API e sem tocar no histórico.
+ */
+describe("modelo da operação de revisão (SECURITY DEFINER)", () => {
+  beforeAll(async () => {
+    await db.exec(`
+      create function public.zz_test_start_revision(p_material uuid) returns uuid
+      language plpgsql security definer set search_path = '' as $$
+      declare v_client uuid; v_id uuid;
+      begin
+        select client_id into v_client from public.materials where id = p_material;
+        if v_client is null or not app.staff_can_access(v_client) then
+          raise exception 'sem permissão';
+        end if;
+        perform app.grant_revision_ticket(p_material);
+        insert into public.material_versions (material_id, client_id, note, created_by)
+        values (p_material, v_client, 'revisão', auth.uid()) returning id into v_id;
+        return v_id;
+      end $$;
+      revoke execute on function public.zz_test_start_revision(uuid) from public, anon;
+      grant execute on function public.zz_test_start_revision(uuid) to authenticated;
+    `);
+  });
+
+  const start = (userId: string, materialId: string) =>
+    db.asUser(userId, () => errorOf(() => db.query("select public.zz_test_start_revision($1)", [materialId])));
+
+  /** Material enviado e aprovado de verdade (função de decisão do banco). */
+  async function approvedForReal() {
+    const m = await createMaterial(db, { clientId: IDS.clienteA, projectId: IDS.projetoA, sent: true });
+    await db.asUser(IDS.userClienteA, () => db.query("select public.decide_as_approver($1,'aprovado','')", [m.requestId]));
+    return m;
+  }
+  const history = async (materialId: string) => ({
+    decisions: await q("select to_jsonb(d) as r from public.decisions d where material_id = $1 order by id", [materialId]),
+    requests: await q("select to_jsonb(r) as r from public.approval_requests r where material_id = $1 order by id", [materialId]),
+    versions: await q("select to_jsonb(v) as r from public.material_versions v where material_id = $1 and number = 1", [materialId]),
+    files: await q("select to_jsonb(f) as r from public.material_files f where material_id = $1 order by id", [materialId]),
+  });
+
+  it("a função emite e consome o tíquete na mesma transação: equipe revisa; aprovador, outra organização e anônimo não", async () => {
+    const m = await approvedForReal();
+    expect((await q<{ status: string }>("select status from public.materials where id = $1", [m.materialId]))[0].status).toBe("aprovado");
+
+    expect(await start(IDS.userClienteA, m.materialId)).toMatch(/sem permissão/);
+    expect(await start(IDS.staffOutraOrg, m.materialId)).toMatch(/sem permissão/);
+    expect(await db.asAnon(() => errorOf(() => db.query("select public.zz_test_start_revision($1)", [m.materialId])))).toMatch(/permission denied/);
+    expect((await q("select 1 from public.material_versions where material_id = $1", [m.materialId])).length).toBe(1);
+
+    expect(await start(IDS.designer, m.materialId)).toBeNull();
+    expect((await q<{ status: string }>("select status from public.materials where id = $1", [m.materialId]))[0].status).toBe("rascunho");
+    expect((await q<{ number: number }>("select number from public.material_versions where material_id = $1 order by number", [m.materialId])).map((r) => r.number)).toEqual([1, 2]);
+    expect(await q("select 1 from app.revision_tickets")).toHaveLength(0); // consumido; nada sobra
+  });
+
+  it("a existência da função não abre nada: o usuário continua sem emitir tíquete nem alterar o material aprovado", async () => {
+    const m = await approvedForReal();
+    for (const sql of [
+      "select app.grant_revision_ticket($1)",
+      "insert into app.revision_tickets (material_id, txid) values ($1, txid_current())",
+      "update public.materials set status = 'rascunho' where id = $1",
+      "update public.materials set title = 'Alterado' where id = $1",
+      `insert into public.material_versions (material_id, client_id, created_by) select $1, '${IDS.clienteA}', '${IDS.designer}'`,
+    ]) {
+      expect(await db.asUser(IDS.designer, () => errorOf(() => db.query(sql, [m.materialId]))), sql).toMatch(
+        /permission denied|operação de revisão|já enviado para aprovação/,
+      );
+    }
+    expect((await q<{ status: string }>("select status from public.materials where id = $1", [m.materialId]))[0].status).toBe("aprovado");
+  });
+
+  it("o histórico (versão 1, arquivos, solicitação e decisão) permanece idêntico e imutável depois da revisão", async () => {
+    const m = await approvedForReal();
+    const before = await history(m.materialId);
+    expect(before.decisions).toHaveLength(1);
+    expect(await start(IDS.atendimento, m.materialId)).toBeNull();
+    expect(await history(m.materialId)).toEqual(before);
+
+    // Imutáveis para qualquer um, inclusive o dono do banco.
+    expect(await errorOf(() => db.query("update public.material_versions set note = 'x' where id = $1", [m.versionId]))).toMatch(/imutável/);
+    expect(await errorOf(() => db.query("delete from public.material_versions where id = $1", [m.versionId]))).toMatch(/imutável/);
+    expect(await errorOf(() => db.query("update public.decisions set decision = 'alteracao' where material_id = $1", [m.materialId]))).toMatch(/imutável/);
+    expect(await errorOf(() => db.query("delete from public.decisions where material_id = $1", [m.materialId]))).toMatch(/imutável/);
+    // A equipe não mexe nos arquivos de uma versão já enviada.
+    const del = await db.asUser(IDS.designer, async () =>
+      (await db.query("delete from public.material_files where material_id = $1 and version_id = $2 returning id", [m.materialId, m.versionId])).rows,
+    );
+    expect(del).toHaveLength(0);
+    expect(await history(m.materialId)).toEqual(before);
+  });
+
+  it("dono, privilégios e SECURITY DEFINER: mesmo dono da tabela, search_path vazio, sem EXECUTE para a API e RLS ligada", async () => {
+    const fns = await q<{ proname: string; prosecdef: boolean; owner: string; cfg: string[] | null }>(
+      `select p.proname, p.prosecdef, pg_get_userbyid(p.proowner) as owner, p.proconfig as cfg
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'app' and p.proname in ('grant_revision_ticket', 'has_revision_ticket', 'materials_guard_status')
+       order by 1`,
+    );
+    expect(fns).toHaveLength(3);
+    const [table] = await q<{ owner: string; rls: boolean; forced: boolean }>(
+      "select pg_get_userbyid(relowner) as owner, relrowsecurity as rls, relforcerowsecurity as forced from pg_class where oid = 'app.revision_tickets'::regclass",
+    );
+    for (const fn of fns) {
+      expect(fn.prosecdef, fn.proname).toBe(true);
+      expect(fn.cfg, fn.proname).toContain('search_path=""');
+      expect(fn.owner, fn.proname).toBe(table.owner); // o dono das funções é quem acessa a tabela (a RLS não o barra)
+    }
+    expect(table.rls).toBe(true);
+    expect(table.forced).toBe(false); // sem FORCE: só o dono (as funções) passa; ninguém mais tem política nem privilégio
+    expect(await q("select 1 from pg_policies where schemaname = 'app' and tablename = 'revision_tickets'")).toHaveLength(0);
+  });
+
+  it("limpeza do modelo de teste", async () => {
+    await db.exec("drop function public.zz_test_start_revision(uuid)");
   });
 });
