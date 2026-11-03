@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { MaterialReview } from "@/components/material-review";
+import { MockDataNotice } from "@/components/interim-data-notice";
 import { PageHeader } from "@/components/page-header";
 import { clientById, projectById } from "@/lib/domain";
 import { clients, comments, decisions, materials, projects } from "@/lib/mock/data";
@@ -18,6 +19,7 @@ export default async function AdminMaterialPage({ params }: PageProps<"/admin/ma
 
   return (
     <>
+      <MockDataNotice />
       <Link
         href="/admin/materiais"
         className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-white"

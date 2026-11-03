@@ -25,7 +25,9 @@ Três ambientes:
 1. **Banco de dados** — `supabase/migrations/` (4 arquivos): esquema, funções, RLS e storage. Testado com PGlite (`npm run test:db`) **e aplicado no projeto de desenvolvimento**, com `supabase/verify.sql` (16 blocos) todos em 0.
 2. **Autenticação** — Supabase Auth (login, recuperação de senha, convite, logout), `src/proxy.ts`, DAL em `src/lib/auth/session.ts`. Primeiro administrador criado (`admin@luvicompany.com.br`) e login/rotas validados (testes manuais do usuário).
 
-**Ainda por fazer:** Módulo 3 (cadastro/upload/versões de materiais) e Módulo 4 (solicitações, aprovação no portal, link seguro com código, comentários, decisões reais). **Não iniciados.** Até lá, `/admin` e `/portal` **autenticam de verdade, mas ainda leem `src/lib/mock/`**: não cadastre clientes reais. Fora do modo demonstração, `/aprovar/[token]` responde sempre "link inválido".
+**Módulo 3 (Gestão de Materiais), em andamento por etapas — plano e acompanhamento em `docs/MODULO-3.md`:** a **etapa A (clientes e projetos) está concluída**: `/admin/clientes` e `/admin/projetos` leem e gravam no banco real (cadastro, edição, arquivamento, filtros). As etapas B a F (materiais, upload, carrosséis e versões, dashboard real, testes) **não foram iniciadas** e só começam com autorização expressa, uma por vez.
+
+**Módulo 4** (solicitações, aprovação no portal, link seguro com código, comentários, decisões reais) **não iniciado**. Enquanto isso, o dashboard, os materiais, o histórico, os usuários e o portal **ainda leem `src/lib/mock/`**: essas telas mostram o aviso de dados de demonstração (`MockDataNotice`) fora do modo demonstração. Fora do modo demonstração, `/aprovar/[token]` responde sempre "link inválido".
 
 **Pendências conhecidas (detalhes em `docs/CHECKLIST-LANCAMENTO.md`):** recuperação de senha por e-mail **ainda não testada** (precisa de SMTP próprio com o Resend: `docs/EMAIL-RESEND.md`); timeouts de conexão do ambiente de desenvolvimento são da **rede local** (`docs/DIAGNOSTICO-REDE.md`, `npm run net:check`); não existe projeto Supabase de produção; a `main` (demonstração publicada) tem o defeito do menu do usuário já corrigido na `fase-2`.
 
@@ -61,7 +63,7 @@ npm run lint         # ESLint
 npm run typecheck    # next typegen + tsc --noEmit
 npm test             # Vitest: unitários, componentes e banco (PGlite)
 npm run test:db      # só os testes de banco/RLS (src/test/db)
-npm run test:e2e     # build + Playwright: demo em :3100 (desktop+celular) e modo real em :3101
+npm run test:e2e     # build + Playwright: demo em :3100 (desktop+celular), modo real em :3101 e modo real com servidor FALSO de Auth/PostgREST em :3102 (e2e/support/mock-supabase.mjs)
 npm run check        # lint + typecheck + testes (rodar antes de entregar)
 npm run env:check    # confere variáveis de ambiente sem abrir conexão nem imprimir chaves
 npm run net:check    # diagnostica timeouts: conexões TCP ao Supabase vs. destinos de controle (sem chaves)
@@ -87,7 +89,9 @@ src/lib/domain.ts   regras de negócio puras (estado do link, KPIs, filtros) —
 src/lib/types.ts    modelos de domínio
 src/lib/mock/       dados fictícios (modo demonstração; serão substituídos nos Módulos 3 e 4)
 src/lib/env.ts      leitura central de variáveis, isDemoMode()
-src/lib/auth/       roles, safeNextPath, senha, erros (puros) e session.ts (DAL: requireStaff/requireClientUser)
+src/lib/auth/       roles, safeNextPath, senha, erros (puros), session.ts (DAL: requireStaff/requireClientUser) e action-guard.ts (autorização das Server Actions)
+src/lib/clients/    clientes e projetos (Módulo 3): schema/validação, consultas sob RLS, adaptador da demonstração
+src/components/clients/  formulários em janela, cartões e filtros de clientes/projetos
 src/lib/supabase/   server.ts (usuário, RLS), admin.ts (service_role, só servidor), proxy.ts (renovação de sessão)
 src/proxy.ts        primeira barreira: anônimo em /admin, /portal, /redefinir-senha vai ao /login
 src/test/db/        harness PGlite + testes de esquema, RLS, isolamento e aprovação
@@ -98,6 +102,7 @@ docs/VALIDACAO-FASE-2.md     registro da validação (testes manuais do usuário
 docs/DIAGNOSTICO-REDE.md     timeouts de conexão: evidências, causa (rede local) e o que fazer
 docs/EMAIL-RESEND.md         recuperação de senha e SMTP com o Resend: o que falta
 docs/CHECKLIST-LANCAMENTO.md checklist de segurança e lançamento
+docs/MODULO-3.md            plano por etapas (A–F), critérios de aceite, lacunas de banco e teste manual do Módulo 3
 e2e/                testes Playwright
 public/brand/       logo e favicon copiados do site institucional
 ```
@@ -138,6 +143,7 @@ Origem: `Site-Luvi` (`CLAUDE.md` e `assets/css`). Tema **único e escuro**, toke
 - Modelo: `organizations` → `profiles` (1:1 com `auth.users`, papel `admin|designer|atendimento|cliente`) → `clients` → `approvers` (vínculo opcional a um perfil de login) → `projects` → `materials` → `material_versions` (imutáveis) → `material_files` (um por slide) → `approval_requests` → `approval_links` (só o **hash** do token) → `comments` / `decisions` (imutáveis) / `audit_events`.
 - Todas as tabelas de negócio carregam `client_id`; FKs compostas impedem filho apontando para pai de outro cliente. Nada tem `ON DELETE CASCADE`: arquivar é `active = false`.
 - RLS ligada em tudo; `anon` não tem acesso a tabela nenhuma; `authenticated` recebe grants mínimos por coluna (ex.: o status do material e o `token_hash` não são graváveis/legíveis pelo app). Segredos (`approval_verifications`, `approval_link_sessions`) só o `service_role` acessa.
+- **Telas reais do painel (Módulo 3):** leitura em `src/lib/clients/queries.ts` e escrita em Server Actions com `authorizeStaff()` (`src/lib/auth/action-guard.ts`), sempre com o cliente Supabase **do usuário** (RLS). **Nunca importar `src/lib/supabase/admin` nessas áreas** (`src/test/no-secret-key.test.ts` reprova). Tela que passa a ler o banco **deixa de renderizar `<MockDataNotice />`** e nunca importa `src/lib/mock` fora do modo demonstração; `organization_id` e `created_by` vêm da sessão do servidor, nunca do formulário.
 - Mudanças de estado de aprovação só por funções SQL (`decide_as_approver`, `decide_via_link`, `create_approval_link`, `revoke_approval_link`, `cancel_approval_request`); `decide_via_link` é só do servidor.
 - Triggers `BEFORE` rodam antes da RLS: qualquer um que leia dados de outro cliente deve checar `app.staff_can_access` primeiro (já foi um vazamento real, coberto em `rls.test.ts`).
 - **Não há cadastro livre.** Perfis são criados só pelo servidor (service_role) após convite; o signup do Supabase Auth fica desligado.

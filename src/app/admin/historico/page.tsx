@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CheckCircle2, MessageSquareWarning } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { MockDataNotice } from "@/components/interim-data-notice";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { clientById } from "@/lib/domain";
@@ -14,6 +15,7 @@ export default function AdminHistoryPage() {
   const rows = [...decisions].sort((a, b) => b.at.localeCompare(a.at));
   return (
     <>
+      <MockDataNotice />
       <PageHeader
         title="Histórico de aprovações"
         description="Registro imutável de cada decisão: quem decidiu, quando, em qual versão e por qual canal."

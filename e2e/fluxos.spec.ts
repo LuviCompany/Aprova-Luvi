@@ -49,6 +49,46 @@ test.describe("dashboard", () => {
   });
 });
 
+test.describe("clientes e projetos (demonstração, somente leitura)", () => {
+  test("clientes: busca por nome e filtro de status, sem botões de escrita", async ({ page }) => {
+    await page.goto("/admin/clientes");
+    await expect(page.getByRole("heading", { name: "Casa Aurora Móveis" })).toBeVisible();
+    await expect(page.getByText("4 clientes", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Novo cliente" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Editar|^Arquivar/ })).toHaveCount(0);
+
+    await page.getByLabel("Buscar por nome").fill("vita");
+    await page.getByRole("button", { name: "Filtrar" }).click();
+    await expect(page).toHaveURL(/q=vita/);
+    await expect(page.getByRole("heading", { name: "Vita Nutri" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Casa Aurora Móveis" })).toHaveCount(0);
+    await expect(page.getByText("1 cliente", { exact: true })).toBeVisible();
+
+    await page.goto("/admin/clientes?status=arquivados");
+    await expect(page.getByText("Nenhum cliente encontrado com esses filtros.")).toBeVisible();
+  });
+
+  test("projetos: filtros por status e por cliente, sem botões de escrita", async ({ page }) => {
+    await page.goto("/admin/projetos");
+    await expect(page.getByText("6 projetos", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Novo projeto" })).toHaveCount(0);
+
+    await page.getByLabel("Status").selectOption("pausado");
+    await page.getByRole("button", { name: "Filtrar" }).click();
+    await expect(page.getByRole("heading", { name: "Promoções de Novembro" })).toBeVisible();
+    await expect(page.getByText("1 projeto", { exact: true })).toBeVisible();
+
+    await page.goto("/admin/projetos?cliente=c1");
+    await expect(page.getByText("2 projetos", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Campanha Black Friday" })).toBeVisible();
+  });
+
+  test("parâmetros inválidos na URL não quebram a página", async ({ page }) => {
+    await page.goto("/admin/projetos?status=%27%3B%20drop%20table&cliente=1%20or%201%3D1&q=%25");
+    await expect(page.getByRole("heading", { name: "Projetos", level: 1 })).toBeVisible();
+  });
+});
+
 test.describe("portal do cliente", () => {
   test("aprova um material pendente", async ({ page }) => {
     await page.goto("/portal/materiais/m2");
@@ -98,7 +138,7 @@ test.describe("aprovação rápida por link", () => {
 });
 
 test("não há overflow horizontal nas telas principais", async ({ page }) => {
-  for (const path of ["/login", "/admin", "/admin/materiais/m1", "/portal", "/aprovar/demo"]) {
+  for (const path of ["/login", "/admin", "/admin/clientes", "/admin/projetos", "/admin/materiais/m1", "/portal", "/aprovar/demo"]) {
     await page.goto(path);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

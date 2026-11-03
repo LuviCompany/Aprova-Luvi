@@ -1,11 +1,27 @@
+import { Suspense } from "react";
+import { connection } from "next/server";
 import { Construction } from "lucide-react";
+import { isDemoMode } from "@/lib/env";
 
 /**
- * Aviso provisório do Módulo 2: a autenticação já é real, mas as telas ainda leem os dados
- * fictícios (src/lib/mock). Sai no Módulo 3/4, quando o painel e o portal passarem a consultar
- * o banco. Enquanto isso, NÃO cadastre clientes reais.
+ * Aviso nas telas que AINDA leem os dados fictícios de src/lib/mock (dashboard, materiais,
+ * histórico, usuários). Fora do modo demonstração, sem ele alguém poderia confundir os números
+ * de exemplo com dados reais. Cada tela passa a ficar SEM o aviso quando migra para o banco
+ * (clientes e projetos já migraram, no Módulo 3 etapa A).
+ *
+ * O modo é decidido a cada requisição (`connection()`), nunca congelado na build.
  */
-export function InterimDataNotice() {
+export function MockDataNotice({ until = "nas próximas etapas do Módulo 3" }: { until?: string }) {
+  return (
+    <Suspense fallback={null}>
+      <MockDataNoticeContent until={until} />
+    </Suspense>
+  );
+}
+
+async function MockDataNoticeContent({ until }: { until: string }) {
+  await connection();
+  if (isDemoMode()) return null;
   return (
     <p
       role="note"
@@ -13,8 +29,8 @@ export function InterimDataNotice() {
     >
       <Construction className="mt-0.5 size-4 shrink-0" aria-hidden />
       <span>
-        Login real ativo. Os materiais exibidos ainda são de demonstração: a ligação com o banco de dados
-        chega no próximo módulo.
+        Esta tela ainda mostra <strong>dados de demonstração</strong>: eles não vêm do seu banco de dados e não
+        representam clientes reais. A ligação com o banco chega {until}.
       </span>
     </p>
   );

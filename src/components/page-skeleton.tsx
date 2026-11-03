@@ -16,6 +16,24 @@ export function PageSkeleton() {
   );
 }
 
+/** Fallback das listagens (clientes, projetos): cabeçalho, filtros e cartões. */
+export function ListSkeleton() {
+  return (
+    <div role="status" aria-label="Carregando" className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-4 w-96 max-w-full" />
+      </div>
+      <Skeleton className="h-12 w-full rounded-xl" />
+      <div className="grid gap-4 md:grid-cols-2">
+        {Array.from({ length: 4 }, (_, i) => (
+          <Skeleton key={i} className="h-52 rounded-2xl" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Fallback das áreas autenticadas enquanto a sessão é verificada no servidor. */
 export function ShellSkeleton() {
   return (

@@ -37,6 +37,17 @@ Estado em **2026-11-02**, ao fim da validação da Fase 2 (Módulos 1 e 2). Lege
 | 11 | **LGPD:** dados de clientes e aprovadores são dados pessoais. Definir base legal/aviso de privacidade, retenção, quem acessa e como atender pedidos de exclusão (usuários são desativados, não apagados; decisões e auditoria são imutáveis: documentar essa decisão). | Você | Antes do lançamento |
 | 12 | **Defeito na demonstração de produção:** o menu do usuário da `main` tem o mesmo `DropdownMenuLabel` fora de grupo (erro ao abrir). Corrigir só com deploy autorizado (hotfix na `main` ou ao publicar a Fase 2). | Você decide | Quando houver deploy |
 
+### B.2 Endurecimentos de banco propostos no Módulo 3 (etapa A) — dependem de migration autorizada
+
+| # | Item | Quando |
+|---|---|---|
+| 13 | Trigger recusando projeto novo em cliente arquivado (hoje só a Server Action recusa) | Antes do lançamento |
+| 14 | Índice único `(organization_id, lower(btrim(name)))` para clientes (hoje "Casa Aurora" e "casa aurora" coexistem no banco) | Antes do lançamento |
+| 15 | Auditoria (`audit_events`) de criar, editar e arquivar clientes e projetos | Antes do lançamento / Fase 4 |
+| 16 | Cadastro de aprovadores na interface (a RLS já permite): pré-requisito do Módulo 4 | Início do Módulo 4 |
+
+Detalhes e testes pendentes (`it.todo`): `docs/MODULO-3.md`.
+
 ## C. E-mail e domínio
 
 - [ ] SMTP próprio do Supabase com o Resend, modelos em português e teste de recuperação ponta a ponta (`docs/EMAIL-RESEND.md`). **Você** (painéis) / **Eu** (teste).

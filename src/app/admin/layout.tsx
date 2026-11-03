@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
 import { Suspense, type ReactNode } from "react";
 import { AdminShell } from "@/components/admin/admin-shell";
-import { InterimDataNotice } from "@/components/interim-data-notice";
 import { ShellSkeleton } from "@/components/page-skeleton";
 import { ROLE_LABEL } from "@/lib/auth/roles";
 import { requireStaff } from "@/lib/auth/session";
-import { isDemoMode } from "@/lib/env";
 
 export const metadata: Metadata = { title: { default: "Painel", template: "%s · Painel · Aprova Luvi" } };
 
@@ -24,7 +22,6 @@ async function AdminGate({ children }: { children: ReactNode }) {
     <AdminShell
       user={{ name: user.name, email: user.email, initials: user.initials, roleLabel: ROLE_LABEL[user.role] }}
     >
-      {!isDemoMode() && <InterimDataNotice />}
       {children}
     </AdminShell>
   );

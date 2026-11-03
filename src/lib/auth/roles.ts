@@ -17,6 +17,15 @@ export function isStaffRole(role: AppRole): boolean {
   return STAFF_ROLES.includes(role);
 }
 
+/**
+ * Quem cadastra e edita clientes e aprovadores. Espelha `app.can_manage_clients()` no banco
+ * (admin e atendimento): o designer só lê. A RLS é a barreira final; isto evita oferecer na tela,
+ * e aceitar numa Server Action, o que o banco recusaria.
+ */
+export function canManageClients(role: AppRole): boolean {
+  return role === "admin" || role === "atendimento";
+}
+
 /** Tela inicial de cada perfil depois do login. */
 export function homeForRole(role: AppRole): string {
   return isStaffRole(role) ? "/admin" : "/portal";

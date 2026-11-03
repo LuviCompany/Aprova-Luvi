@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/page-header";
+import { MockDataNotice } from "@/components/interim-data-notice";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -18,6 +19,7 @@ const ROLE_LABEL: Record<TeamUser["role"], string> = {
 export default function AdminUsersPage() {
   return (
     <>
+      <MockDataNotice />
       <PageHeader title="Usuários" description="Equipe Luvi com acesso ao painel administrativo." />
       <Card>
         <CardContent>

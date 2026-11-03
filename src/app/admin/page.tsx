@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Clock, MessageSquareWarning, Timer } from "lucide-react";
 import { KpiCard } from "@/components/kpi-card";
+import { MockDataNotice } from "@/components/interim-data-notice";
 import { MaterialsTable } from "@/components/materials-table";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,7 @@ export default function AdminDashboardPage() {
 
   return (
     <>
+      <MockDataNotice />
       <PageHeader
         title="Dashboard"
         description="Visão geral das aprovações de todos os clientes da Luvi."

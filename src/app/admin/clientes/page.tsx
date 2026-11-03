@@ -1,64 +1,75 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import { ClientCard } from "@/components/clients/client-card";
+import { ClientFormDialog } from "@/components/clients/client-form-dialog";
+import { ListFilters } from "@/components/clients/list-filters";
 import { PageHeader } from "@/components/page-header";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Card, CardContent } from "@/components/ui/card";
-import { clients, materials, projects } from "@/lib/mock/data";
+import { ListSkeleton } from "@/components/page-skeleton";
+import { canManageClients } from "@/lib/auth/roles";
+import { requireStaff } from "@/lib/auth/session";
+import { demoClients } from "@/lib/clients/demo";
+import { listClients } from "@/lib/clients/queries";
+import { parseClientFilters } from "@/lib/clients/schema";
+import { isDemoMode } from "@/lib/env";
 
 export const metadata: Metadata = { title: "Clientes" };
 
-export default function AdminClientsPage() {
+const STATUS_OPTIONS = [
+  { value: "ativos", label: "Ativos" },
+  { value: "arquivados", label: "Arquivados" },
+  { value: "todos", label: "Todos" },
+];
+
+export default function AdminClientsPage({ searchParams }: PageProps<"/admin/clientes">) {
+  return (
+    <Suspense fallback={<ListSkeleton />}>
+      <ClientsContent searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function ClientsContent({ searchParams }: { searchParams: PageProps<"/admin/clientes">["searchParams"] }) {
+  // Papel e modo (demonstração/real) são decididos a cada requisição, no servidor.
+  const user = await requireStaff();
+  const filters = parseClientFilters(await searchParams);
+  const demo = isDemoMode();
+  const items = demo ? demoClients(filters) : await listClients(filters);
+  const canManage = !demo && canManageClients(user.role);
+  const filtered = !!filters.q || filters.status !== "ativos";
+
   return (
     <>
       <PageHeader
         title="Clientes"
         description="Empresas atendidas e seus aprovadores. Cada cliente enxerga apenas os próprios materiais."
+        actions={canManage ? <ClientFormDialog mode="create" /> : undefined}
       />
-      <div className="grid gap-4 md:grid-cols-2">
-        {clients.map((client) => {
-          const clientProjects = projects.filter((p) => p.clientId === client.id);
-          const pending = materials.filter((m) => m.clientId === client.id && m.status === "aguardando").length;
-          return (
-            <Card key={client.id}>
-              <CardContent className="flex flex-col gap-4">
-                <div className="flex items-center gap-3">
-                  <Avatar className="size-11">
-                    <AvatarFallback className="bg-primary/15 font-heading font-bold text-primary">
-                      {client.initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0">
-                    <h2 className="truncate font-heading text-lg font-bold text-white">{client.name}</h2>
-                    <p className="text-sm text-muted-foreground">{client.segment}</p>
-                  </div>
-                </div>
-                <dl className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Projetos</dt>
-                    <dd className="font-semibold text-white">{clientProjects.length}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Aguardando aprovação</dt>
-                    <dd className="font-semibold text-white">{pending}</dd>
-                  </div>
-                </dl>
-                <div>
-                  <p className="mb-1.5 text-xs text-muted-foreground">Aprovadores</p>
-                  <ul className="flex flex-col gap-1 text-sm">
-                    {client.approvers.map((a) => (
-                      <li key={a.id} className="flex flex-wrap justify-between gap-x-3">
-                        <span className="text-white">
-                          {a.name} <span className="text-muted-foreground">· {a.role}</span>
-                        </span>
-                        <span className="text-muted-foreground">{a.email}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+      <ListFilters
+        action="/admin/clientes"
+        q={filters.q}
+        status={{ value: filters.status, options: STATUS_OPTIONS }}
+        summary={`${items.length} ${items.length === 1 ? "cliente" : "clientes"}`}
+      />
+      {items.length === 0 ? (
+        <p role="status" className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-sm text-muted-foreground">
+          {filtered
+            ? "Nenhum cliente encontrado com esses filtros."
+            : canManage
+              ? "Nenhum cliente cadastrado ainda. Use “Novo cliente” para começar."
+              : "Nenhum cliente cadastrado ainda."}
+        </p>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          {items.map((client) => (
+            <ClientCard key={client.id} client={client} canManage={canManage} />
+          ))}
+        </div>
+      )}
+      {!demo && !canManage && (
+        <p className="mt-6 text-xs text-muted-foreground">
+          Seu perfil pode consultar os clientes. O cadastro e a edição são do Atendimento e da administração.
+        </p>
+      )}
     </>
   );
 }
