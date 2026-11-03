@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Ban, Clock, Home, Lock, ShieldX } from "lucide-react";
-import { Logo } from "@/components/brand/logo";
+import { Suspense } from "react";
+import { connection } from "next/server";
+import { LinkFrame, LinkProblemCard } from "@/components/approval/link-frame";
+import { LinkVerifyCard } from "@/components/approval/link-verify-card";
+import { ReviewScreen } from "@/components/approval/review-screen";
 import { QuickApproval } from "@/components/quick-approval";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { isDemoMode } from "@/lib/env";
-import { LINK_STATE_LABEL, clientById, maskEmail, projectById, resolveLinkState } from "@/lib/domain";
+import { PageSkeleton } from "@/components/page-skeleton";
+import { clientById, maskEmail, projectById, resolveLinkState } from "@/lib/domain";
+import { isDemoMode, isSupabaseConfigured } from "@/lib/env";
+import { readSessionId } from "@/lib/link-approval/cookie";
+import { getLinkContext, loadLinkReview, resolveLink } from "@/lib/link-approval/service";
 import { NOW, approvalLinks, clients, comments, decisions, materials, projects } from "@/lib/mock/data";
-import type { LinkState } from "@/lib/types";
+import { linkDecideAction, requestCodeAction, verifyCodeAction } from "./actions";
 
 export const metadata: Metadata = {
   title: "Aprovação rápida",
@@ -17,84 +20,116 @@ export const metadata: Metadata = {
   referrer: "no-referrer",
 };
 
-const PROBLEM: Record<Exclude<LinkState, "valido">, { icon: typeof Clock; text: string }> = {
-  expirado: {
-    icon: Clock,
-    text: "O prazo deste link terminou. Peça à equipe da Luvi um novo link de aprovação.",
-  },
-  revogado: {
-    icon: Ban,
-    text: "Este link foi cancelado pela equipe da Luvi. Peça um novo link, se precisar.",
-  },
-  utilizado: {
-    icon: Lock,
-    text: "Este material já foi avaliado por este link. Por segurança, cada link só pode ser usado uma vez.",
-  },
-};
-
-function Frame({ children }: { children: React.ReactNode }) {
+export default function QuickApprovalPage({ params }: PageProps<"/aprovar/[token]">) {
   return (
-    <div className="luvi-glow flex min-h-screen flex-col overflow-hidden">
-      <header className="flex h-16 items-center justify-center border-b border-white/10">
-        <Logo size="sm" />
-      </header>
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">{children}</main>
-      <div className="flex justify-center px-4 pb-4">
-        <Button variant="outline" render={<Link href="/" />}>
-          <Home data-icon="inline-start" /> Voltar ao início
-        </Button>
-      </div>
-      <footer className="py-6 text-center text-xs text-muted-foreground">Aprova Luvi · Luvi Company</footer>
-    </div>
+    <Suspense
+      fallback={
+        <LinkFrame>
+          <PageSkeleton />
+        </LinkFrame>
+      }
+    >
+      <QuickApprovalContent params={params} />
+    </Suspense>
   );
 }
 
-export default async function QuickApprovalPage({ params }: PageProps<"/aprovar/[token]">) {
+async function QuickApprovalContent({ params }: { params: PageProps<"/aprovar/[token]">["params"] }) {
+  await connection();
   const { token } = await params;
-  // Até o Módulo 4 (links reais) os tokens existentes são fictícios. Fora do modo demonstração
-  // nenhum deles vale: a página responde como link inválido (falha fechado).
-  const link = isDemoMode() ? approvalLinks.find((l) => l.token === token) : undefined;
-  const state = resolveLinkState(link, NOW);
-  const material = link && materials.find((m) => m.id === link.materialId);
 
-  // Token desconhecido e link revogado respondem igual: não revela se o token já existiu.
-  if (!link || !material) {
+  if (isDemoMode()) return <DemoView token={token} />;
+  if (!isSupabaseConfigured() || !process.env.APPROVAL_LINK_SECRET) {
     return (
-      <Frame>
-        <Card className="mx-auto max-w-md">
-          <CardContent className="flex flex-col items-center gap-3 py-6 text-center">
-            <ShieldX className="size-10 text-destructive" aria-hidden />
-            <h1 className="font-heading text-xl font-bold text-white">Link inválido</h1>
-            <p className="text-sm text-muted-foreground">
-              Não encontramos este link de aprovação. Confira o endereço ou fale com a equipe da Luvi.
-            </p>
-          </CardContent>
-        </Card>
-      </Frame>
+      <LinkFrame>
+        <LinkProblemCard kind="unavailable" />
+      </LinkFrame>
     );
   }
 
-  if (state !== "valido") {
-    const { icon: Icon, text } = PROBLEM[state];
+  let state;
+  try {
+    const result = await getLinkContext(token, await readSessionId(token));
+    if (result.status === "no_session") {
+      const resolved = await resolveLink(token);
+      state = resolved.status === "ok" ? ({ kind: "verify", ...resolved } as const) : ({ kind: "problem", problem: resolved.status } as const);
+    } else if (result.status === "ok") {
+      state = { kind: "review", context: result.context, data: await loadLinkReview(result.context) } as const;
+    } else {
+      state = { kind: "problem", problem: result.status } as const;
+    }
+  } catch {
     return (
-      <Frame>
-        <Card className="mx-auto max-w-md">
-          <CardContent className="flex flex-col items-center gap-3 py-6 text-center">
-            <Icon className="size-10 text-warning" aria-hidden />
-            <h1 className="font-heading text-xl font-bold text-white">{LINK_STATE_LABEL[state]}</h1>
-            <p className="text-sm text-muted-foreground">{text}</p>
-          </CardContent>
-        </Card>
-      </Frame>
+      <LinkFrame>
+        <LinkProblemCard kind="unavailable" />
+      </LinkFrame>
+    );
+  }
+
+  if (state.kind === "problem") {
+    return (
+      <LinkFrame>
+        <LinkProblemCard kind={state.problem} />
+      </LinkFrame>
+    );
+  }
+
+  if (state.kind === "verify") {
+    return (
+      <LinkFrame>
+        <LinkVerifyCard
+          clientName={state.clientName}
+          emailHint={state.emailHint}
+          onRequestCode={requestCodeAction.bind(null, token)}
+          onVerify={verifyCodeAction.bind(null, token)}
+        />
+      </LinkFrame>
+    );
+  }
+
+  const { context, data } = state;
+  return (
+    <LinkFrame>
+      <ReviewScreen
+        review={data.review}
+        status={data.status}
+        fileBase={`/aprovar/${token}/arquivos`}
+        canDecide
+        idleNotice=""
+        approverName={context.approverName}
+        onDecide={linkDecideAction.bind(null, token)}
+      />
+    </LinkFrame>
+  );
+}
+
+/** Demonstração (Fase 1): tokens fictícios e dados de exemplo. Fora dela nenhum deles vale. */
+function DemoView({ token }: { token: string }) {
+  const link = approvalLinks.find((l) => l.token === token);
+  const state = resolveLinkState(link, NOW);
+  const material = link && materials.find((m) => m.id === link.materialId);
+
+  if (!link || !material) {
+    return (
+      <LinkFrame>
+        <LinkProblemCard kind="invalid" />
+      </LinkFrame>
+    );
+  }
+  if (state !== "valido") {
+    const kind = state === "expirado" ? "expired" : state === "revogado" ? "revoked" : "used";
+    return (
+      <LinkFrame>
+        <LinkProblemCard kind={kind} />
+      </LinkFrame>
     );
   }
 
   const client = clientById(material.clientId, clients)!;
   const project = projectById(material.projectId, projects)!;
   const approver = client.approvers.find((a) => a.id === link.approverId)!;
-
   return (
-    <Frame>
+    <LinkFrame>
       <QuickApproval
         material={material}
         client={client}
@@ -104,6 +139,6 @@ export default async function QuickApprovalPage({ params }: PageProps<"/aprovar/
         comments={comments.filter((c) => c.materialId === material.id)}
         decisions={decisions.filter((d) => d.materialId === material.id)}
       />
-    </Frame>
+    </LinkFrame>
   );
 }

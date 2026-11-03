@@ -1,14 +1,75 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { CheckCircle2, MessageSquareWarning } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { ListSkeleton } from "@/components/page-skeleton";
 import { Card, CardContent } from "@/components/ui/card";
+import { listMyDecisions } from "@/lib/approval/portal-queries";
+import { resolvePortalContext } from "@/lib/auth/portal-context";
+import { requireClientUser } from "@/lib/auth/session";
+import { isDemoMode } from "@/lib/env";
 import { formatDateTime } from "@/lib/format";
 import { CURRENT_PORTAL_CLIENT_ID, decisions, materials } from "@/lib/mock/data";
 
 export const metadata: Metadata = { title: "Histórico" };
 
 export default function PortalHistoryPage() {
+  return (
+    <Suspense fallback={<ListSkeleton />}>
+      <HistoryContent />
+    </Suspense>
+  );
+}
+
+async function HistoryContent() {
+  const user = await requireClientUser();
+  if (isDemoMode()) return <HistoryDemo />;
+
+  const resolution = await resolvePortalContext(user);
+  if (resolution.kind !== "ok") return null;
+  const mine = await listMyDecisions(resolution.context);
+
+  return (
+    <>
+      <PageHeader title="Histórico" description="Todas as decisões que você registrou nesta empresa." />
+      <Card>
+        <CardContent>
+          {mine.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma decisão registrada ainda.</p>
+          ) : (
+            <ol className="flex flex-col divide-y divide-white/10" data-testid="portal-history">
+              {mine.map((d) => (
+                <li key={d.id} className="flex items-start gap-3 py-4 first:pt-0 last:pb-0">
+                  {d.decision === "aprovado" ? (
+                    <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden />
+                  ) : (
+                    <MessageSquareWarning className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
+                  )}
+                  <div className="min-w-0 text-sm">
+                    <p className="text-white">
+                      {d.decision === "aprovado" ? "Aprovado" : "Alteração solicitada"} ·{" "}
+                      <Link href={`/portal/materiais/${d.materialId}`} className="underline-offset-4 hover:text-primary hover:underline">
+                        {d.materialTitle}
+                      </Link>{" "}
+                      <span className="text-muted-foreground">(v{d.versionNumber})</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDateTime(d.at)} · {d.via === "link" ? "link rápido" : "portal"}
+                    </p>
+                    {d.note && <p className="mt-1 text-muted-foreground">“{d.note}”</p>}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+function HistoryDemo() {
   const mine = decisions
     .filter((d) => materials.find((m) => m.id === d.materialId)?.clientId === CURRENT_PORTAL_CLIENT_ID)
     .sort((a, b) => b.at.localeCompare(a.at));

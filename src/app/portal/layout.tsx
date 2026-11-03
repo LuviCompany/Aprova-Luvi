@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense, type ReactNode } from "react";
-import { MockDataNotice } from "@/components/interim-data-notice";
 import { ShellSkeleton } from "@/components/page-skeleton";
 import { PortalShell } from "@/components/portal/portal-shell";
 import { CompanyPicker } from "@/components/portal/company-picker";
@@ -35,7 +34,6 @@ async function PortalGate({ children }: { children: ReactNode }) {
       companies={links}
       activeClientId={context.clientId}
     >
-      <MockDataNotice until="no Módulo 4" />
       {children}
     </PortalShell>
   );

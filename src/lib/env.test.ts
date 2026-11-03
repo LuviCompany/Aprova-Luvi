@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   classifyKey,
   diagnoseEnv,
+  getEmailProviderConfig,
   getSiteUrl,
   getSupabaseConfig,
   isDemoMode,
   isSupabaseConfigured,
+  requireLinkSecret,
   requireSecretKey,
 } from "@/lib/env";
 
@@ -112,7 +114,13 @@ describe("getSiteUrl (links de e-mail nunca apontam para outro ambiente)", () =>
 });
 
 describe("diagnoseEnv (npm run env:check)", () => {
-  const good = { SUPABASE_URL: "https://abc.supabase.co", SUPABASE_PUBLISHABLE_KEY: PUB, SUPABASE_SECRET_KEY: SEC };
+  const good = {
+    SUPABASE_URL: "https://abc.supabase.co",
+    SUPABASE_PUBLISHABLE_KEY: PUB,
+    SUPABASE_SECRET_KEY: SEC,
+    APPROVAL_LINK_SECRET: "s".repeat(40),
+    EMAIL_PROVIDER: "simulated",
+  };
 
   it("aprova uma configuração correta com chaves novas, sem avisos", () => {
     const d = diagnoseEnv(env(good));
@@ -149,5 +157,44 @@ describe("diagnoseEnv (npm run env:check)", () => {
 
   it("em produção, sem APP_URL https é erro", () => {
     expect(diagnoseEnv(env({ ...good, NODE_ENV: "production" })).errors.join(" ")).toMatch(/APP_URL/);
+  });
+});
+
+describe("aprovação por link: segredo e provedor de e-mail", () => {
+  it("o segredo do link exige 32+ caracteres e falha alto, sem vazar o valor", () => {
+    expect(requireLinkSecret(env({ APPROVAL_LINK_SECRET: "a".repeat(32) }))).toBe("a".repeat(32));
+    for (const bad of [undefined, "", "curto", "a".repeat(31)]) {
+      const values: Record<string, string> = bad === undefined ? {} : { APPROVAL_LINK_SECRET: bad };
+      expect(() => requireLinkSecret(env(values)), String(bad)).toThrow(/APPROVAL_LINK_SECRET/);
+    }
+  });
+
+  it("o provedor simulado vale fora de produção e é RECUSADO em produção", () => {
+    expect(getEmailProviderConfig(env({ EMAIL_PROVIDER: "simulated" }))).toEqual({ kind: "simulated" });
+    const prod = getEmailProviderConfig(env({ EMAIL_PROVIDER: "simulated", NODE_ENV: "production" }));
+    expect(prod.kind).toBe("none");
+  });
+
+  it("resend exige chave e remetente; sem provedor configurado nada é enviado", () => {
+    expect(getEmailProviderConfig(env({ EMAIL_PROVIDER: "resend" })).kind).toBe("none");
+    expect(getEmailProviderConfig(env({ EMAIL_PROVIDER: "resend", RESEND_API_KEY: "re_x" })).kind).toBe("none");
+    expect(getEmailProviderConfig(env({ EMAIL_PROVIDER: "resend", RESEND_API_KEY: "re_x", EMAIL_FROM: "A <a@x.test>" }))).toEqual({
+      kind: "resend",
+      apiKey: "re_x",
+      from: "A <a@x.test>",
+    });
+    expect(getEmailProviderConfig(env({})).kind).toBe("none");
+    expect(getEmailProviderConfig(env({ EMAIL_PROVIDER: "smtp-qualquer" })).kind).toBe("none");
+  });
+
+  it("o diagnóstico avisa quando falta o segredo ou o provedor e não vaza o segredo", () => {
+    const base = { SUPABASE_URL: "https://abc.supabase.co", SUPABASE_PUBLISHABLE_KEY: PUB, SUPABASE_SECRET_KEY: SEC };
+    const d = diagnoseEnv(env(base));
+    expect(d.ok).toBe(true);
+    expect(d.warnings.join(" ")).toMatch(/APPROVAL_LINK_SECRET/);
+    expect(d.warnings.join(" ")).toMatch(/E-mail/);
+    const full = diagnoseEnv(env({ ...base, APPROVAL_LINK_SECRET: "z".repeat(40), EMAIL_PROVIDER: "simulated" }));
+    expect(JSON.stringify(full)).not.toContain("zzzzzzzz");
+    expect(full.summary).toMatchObject({ linkSecret: "definido", emailProvider: "simulated" });
   });
 });

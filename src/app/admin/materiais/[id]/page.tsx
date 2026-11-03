@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ChevronLeft } from "lucide-react";
+import { ApprovalPanel } from "@/components/approval/approval-panel";
+import { SubmitApprovalDialog } from "@/components/approval/submit-approval-dialog";
 import { FileUploader } from "@/components/materials/file-uploader";
 import { SlidesPanel } from "@/components/materials/slides-panel";
 import { StartRevisionDialog } from "@/components/materials/start-revision-dialog";
@@ -14,6 +16,8 @@ import { PageHeader } from "@/components/page-header";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { StatusBadge, TypeBadge } from "@/components/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { APPROVAL_POLICY_TEXT } from "@/lib/approval/schema";
+import { listApproverOptions, listSubmissions } from "@/lib/approval/staff-queries";
 import { requireStaff } from "@/lib/auth/session";
 import { clientById, projectById } from "@/lib/domain";
 import { isDemoMode } from "@/lib/env";
@@ -74,12 +78,19 @@ async function MaterialContent({ params }: { params: PageProps<"/admin/materiais
   if (!material) notFound();
   const locked = isContentLocked(material.status);
   const canDelete = material.status === "rascunho" && material.versionCount === 0;
-  const versions = await listMaterialVersions(id);
+  const [versions, submissions, approverOptions] = await Promise.all([
+    listMaterialVersions(id),
+    listSubmissions(id),
+    listApproverOptions(material.clientId),
+  ]);
   const latest = versions[0];
   // Versão de trabalho: a mais recente que ainda não foi enviada; só com o material em rascunho se mexe nos arquivos.
   const working = material.status === "rascunho" && (!latest || !latest.sent) ? (latest ?? null) : null;
   const canEditFiles = material.status === "rascunho";
   const canRevise = material.status === "alteracao" || material.status === "aprovado";
+  // Envio: só rascunho, da versão mais recente (a mesma versão pode ser reenviada depois de um cancelamento, se nada mudou).
+  const sendVersion = material.status === "rascunho" && latest && latest.files.length > 0 ? latest : null;
+  const sendBlocked = !material.clientActive ? "Cliente arquivado." : !sendVersion ? "Envie ao menos um arquivo para pedir a aprovação." : undefined;
 
   const facts: Array<[string, string]> = [
     ["Canal", material.channel || "—"],
@@ -96,6 +107,15 @@ async function MaterialContent({ params }: { params: PageProps<"/admin/materiais
         description={`${material.clientName}${material.clientActive ? "" : " (arquivado)"} · ${material.projectName}`}
         actions={
           <>
+            {material.status === "rascunho" && (
+              <SubmitApprovalDialog
+                versionId={sendVersion?.id ?? ""}
+                versionNumber={sendVersion?.number ?? 0}
+                approvers={approverOptions}
+                blockedReason={sendBlocked}
+                suggestedDueDate={material.dueDate}
+              />
+            )}
             <MaterialFormDialog
               mode="edit"
               material={{
@@ -200,6 +220,20 @@ async function MaterialContent({ params }: { params: PageProps<"/admin/materiais
             ) : (
               <p className="text-sm text-muted-foreground">Este material não tem arquivos.</p>
             )}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section aria-labelledby="aprovacao" className="mt-6">
+        <Card>
+          <CardContent className="flex flex-col gap-3">
+            <div>
+              <h2 id="aprovacao" className="font-heading text-base font-bold text-white">
+                Aprovação
+              </h2>
+              <p className="text-xs text-muted-foreground">{APPROVAL_POLICY_TEXT}</p>
+            </div>
+            <ApprovalPanel submissions={submissions} />
           </CardContent>
         </Card>
       </section>

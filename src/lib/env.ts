@@ -135,6 +135,43 @@ export function requireSecretKey(env: NodeJS.ProcessEnv = process.env): string {
   return key;
 }
 
+/**
+ * Segredo (pepper) do fluxo de aprovação por link: entra no HMAC dos códigos de verificação e dos
+ * identificadores de sessão, para que um vazamento só do banco não permita descobrir um código
+ * de 6 dígitos por força bruta. Mínimo de 32 caracteres; SÓ servidor.
+ */
+export function requireLinkSecret(env: NodeJS.ProcessEnv = process.env): string {
+  const secret = env.APPROVAL_LINK_SECRET?.trim();
+  if (!secret || secret.length < 32) throw new MissingEnvError("APPROVAL_LINK_SECRET");
+  return secret;
+}
+
+export type EmailProviderConfig =
+  | { kind: "simulated" }
+  | { kind: "resend"; apiKey: string; from: string }
+  | { kind: "none"; reason: string };
+
+/**
+ * Provedor de e-mail. `simulated` (guarda a mensagem só em memória, para desenvolvimento e testes) é
+ * RECUSADO em produção. `resend` exige RESEND_API_KEY e EMAIL_FROM. Sem nada configurado: "none" —
+ * quem envia deve falhar de forma clara, nunca fingir que enviou.
+ */
+export function getEmailProviderConfig(env: NodeJS.ProcessEnv = process.env): EmailProviderConfig {
+  const kind = env.EMAIL_PROVIDER?.trim().toLowerCase();
+  if (kind === "simulated") {
+    return isProductionEnv(env)
+      ? { kind: "none", reason: "O provedor simulado de e-mail não é permitido em produção." }
+      : { kind: "simulated" };
+  }
+  if (kind === "resend") {
+    const apiKey = env.RESEND_API_KEY?.trim();
+    const from = env.EMAIL_FROM?.trim();
+    if (!apiKey || !from) return { kind: "none", reason: "RESEND_API_KEY e EMAIL_FROM são obrigatórios para o provedor resend." };
+    return { kind: "resend", apiKey, from };
+  }
+  return { kind: "none", reason: "Nenhum provedor de e-mail configurado (EMAIL_PROVIDER)." };
+}
+
 export interface EnvDiagnosis {
   ok: boolean;
   /** Problemas que impedem o uso seguro. */
@@ -187,6 +224,12 @@ export function diagnoseEnv(env: NodeJS.ProcessEnv = process.env): EnvDiagnosis 
   if (!env.SUPABASE_SECRET_KEY && env.SUPABASE_SERVICE_ROLE_KEY) warnings.push("SUPABASE_SERVICE_ROLE_KEY é legada: use SUPABASE_SECRET_KEY.");
   if (!sec) warnings.push("SUPABASE_SECRET_KEY ausente: login e telas funcionam, mas convites, links e URLs assinadas não.");
 
+  if ((env.APPROVAL_LINK_SECRET?.trim().length ?? 0) < 32) {
+    warnings.push("APPROVAL_LINK_SECRET ausente ou curta (mínimo 32 caracteres): a aprovação por link não funciona sem ela.");
+  }
+  const emailConfig = getEmailProviderConfig(env);
+  if (emailConfig.kind === "none") warnings.push(`E-mail: ${emailConfig.reason} Links e códigos não serão enviados.`);
+
   const site = getSiteUrl(env);
   if (!site) errors.push("APP_URL ausente ou inválida em produção (precisa ser https).");
   if (env.NODE_ENV !== "production" && first(env.APP_URL, env.NEXT_PUBLIC_APP_URL) && site === "http://localhost:3000") {
@@ -208,6 +251,8 @@ export function diagnoseEnv(env: NodeJS.ProcessEnv = process.env): EnvDiagnosis 
       publishableKey: pub ? pubKind : "ausente",
       secretKey: sec ? secKind : "ausente",
       siteUrl: site ?? "(inválida)",
+      emailProvider: emailConfig.kind,
+      linkSecret: (env.APPROVAL_LINK_SECRET?.trim().length ?? 0) >= 32 ? "definido" : "ausente",
       demoMode: String(isDemoMode(env)),
     },
   };

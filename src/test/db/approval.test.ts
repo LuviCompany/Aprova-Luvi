@@ -4,7 +4,6 @@ import {
   IDS,
   createMaterial,
   createTestDb,
-  insertRequest,
   openLinkSession,
   sessionHashOf,
   uid,

@@ -1,17 +1,51 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { ArrowRight, CheckCircle2, Clock } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { PageSkeleton } from "@/components/page-skeleton";
+import { PortalMaterialGroups } from "@/components/portal/portal-materials";
 import { StatusBadge, TypeBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { listPortalMaterials } from "@/lib/approval/portal-queries";
+import { resolvePortalContext } from "@/lib/auth/portal-context";
+import { requireClientUser } from "@/lib/auth/session";
+import { isDemoMode } from "@/lib/env";
 import { formatDate } from "@/lib/format";
 import { CURRENT_PORTAL_APPROVER_ID, CURRENT_PORTAL_CLIENT_ID, clients, materials, projects } from "@/lib/mock/data";
 
 export const metadata: Metadata = { title: "Início" };
 
 export default function PortalHomePage() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+async function HomeContent() {
+  const user = await requireClientUser();
+  if (isDemoMode()) return <PortalHomeDemo />;
+
+  // O layout já garantiu uma empresa escolhida; aqui o contexto é lido de novo (sempre revalidado).
+  const resolution = await resolvePortalContext(user);
+  if (resolution.kind !== "ok") return null;
+  const items = await listPortalMaterials(resolution.context);
+  return (
+    <>
+      <PageHeader
+        title={`Olá, ${user.name.split(" ")[0]}!`}
+        description={`${resolution.context.clientName} · acompanhe e aprove os materiais criados pela Luvi.`}
+      />
+      <PortalMaterialGroups items={items} />
+    </>
+  );
+}
+
+function PortalHomeDemo() {
   const client = clients.find((c) => c.id === CURRENT_PORTAL_CLIENT_ID)!;
   const approver = client.approvers.find((a) => a.id === CURRENT_PORTAL_APPROVER_ID)!;
   // Isolamento por cliente: o portal só enxerga dados do cliente autenticado (na Fase 2, garantido por RLS).
