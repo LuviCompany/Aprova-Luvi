@@ -20,22 +20,26 @@ Três ambientes:
 
 ## Estado atual: Fase 2 em andamento (branch `fase-2`)
 
-**Módulos prontos (código + testes, ainda NÃO conectados a um projeto Supabase real):**
+**Módulos prontos e VALIDADOS no projeto de desenvolvimento "DB Aprova Luvi" (2026-11-02; registro em `docs/VALIDACAO-FASE-2.md`):**
 
-1. **Banco de dados** — `supabase/migrations/` (4 arquivos): esquema, funções, RLS e storage. Testado com PGlite (`npm run test:db`).
-2. **Autenticação** — Supabase Auth (login, recuperação de senha, convite, logout), `src/proxy.ts`, DAL em `src/lib/auth/session.ts`.
+1. **Banco de dados** — `supabase/migrations/` (4 arquivos): esquema, funções, RLS e storage. Testado com PGlite (`npm run test:db`) **e aplicado no projeto de desenvolvimento**, com `supabase/verify.sql` (16 blocos) todos em 0.
+2. **Autenticação** — Supabase Auth (login, recuperação de senha, convite, logout), `src/proxy.ts`, DAL em `src/lib/auth/session.ts`. Primeiro administrador criado (`admin@luvicompany.com.br`) e login/rotas validados (testes manuais do usuário).
 
-**Ainda por fazer:** Módulo 3 (cadastro/upload/versões de materiais) e Módulo 4 (solicitações, aprovação no portal, link seguro com código, comentários, decisões reais). Até lá, `/admin` e `/portal` **autenticam de verdade, mas ainda leem `src/lib/mock/`**: não cadastre clientes reais. Fora do modo demonstração, `/aprovar/[token]` responde sempre "link inválido".
+**Ainda por fazer:** Módulo 3 (cadastro/upload/versões de materiais) e Módulo 4 (solicitações, aprovação no portal, link seguro com código, comentários, decisões reais). **Não iniciados.** Até lá, `/admin` e `/portal` **autenticam de verdade, mas ainda leem `src/lib/mock/`**: não cadastre clientes reais. Fora do modo demonstração, `/aprovar/[token]` responde sempre "link inválido".
+
+**Pendências conhecidas (detalhes em `docs/CHECKLIST-LANCAMENTO.md`):** recuperação de senha por e-mail **ainda não testada** (precisa de SMTP próprio com o Resend: `docs/EMAIL-RESEND.md`); timeouts de conexão do ambiente de desenvolvimento são da **rede local** (`docs/DIAGNOSTICO-REDE.md`, `npm run net:check`); não existe projeto Supabase de produção; a `main` (demonstração publicada) tem o defeito do menu do usuário já corrigido na `fase-2`.
 
 ### Modo demonstração x modo real
 
 - `APROVA_DEMO_MODE=true` liga o modo demonstração da Fase 1 (login fictício, dados de exemplo, links `/aprovar/demo|expirado|revogado|utilizado`, código `123456`).
-- Ele só vale **se `SUPABASE_URL`/`SUPABASE_ANON_KEY` estiverem ausentes**: configurar o Supabase desliga a demonstração (`isDemoMode()` em `src/lib/env.ts`). O login fictício nunca convive com usuários reais.
+- Ele só vale **se `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY` estiverem ausentes**: configurar o Supabase desliga a demonstração (`isDemoMode()` em `src/lib/env.ts`). O login fictício nunca convive com usuários reais.
 - Sem Supabase e sem demo, tudo falha fechado (login mostra "ambiente não configurado").
 - **Produção atual** (`aprova.luvicompany.com.br`) roda a Fase 1 em modo demonstração. Fazer deploy desta branch **sem** configurar o Supabase e **sem** `APROVA_DEMO_MODE=true` derruba a demonstração. Nada disso foi publicado.
 - "Agora" nos dados fictícios é fixo em `NOW` (`2026-10-28T12:00:00-03:00`). Nunca usar `Date.now()` nas regras de domínio; receber a data por parâmetro.
 - Configuração do Supabase: `docs/SUPABASE.md`.
-- **Projeto Supabase de desenvolvimento/validação: "DB Aprova Luvi"** (`kswnwootbdzlhdvbhhpk`), só com `http://localhost:3000`, sem dados de clientes reais e **fora da produção**. Antes de qualquer migration: confirmar que o banco está vazio (`supabase/preflight.sql`) e que nenhum app o usa (o projeto Vercel `system` usa outro Supabase: conferir que não é este). A migration 3 revoga privilégios em todo o schema `public`, então jamais aplicá-la num projeto compartilhado.
+- **Projeto Supabase de desenvolvimento/validação: "DB Aprova Luvi"** (`kswnwootbdzlhdvbhhpk`), só com `http://localhost:3000`, sem dados de clientes reais e **fora da produção**. As 4 migrations **já foram aplicadas nele** (2026-11-02). Para QUALQUER outro projeto, antes de aplicar: confirmar que o banco está vazio (`supabase/preflight.sql`) e que nenhum app o usa (o projeto Vercel `system` usa outro Supabase: conferir que não é este). A migration 3 revoga privilégios em todo o schema `public`, então jamais aplicá-la num projeto compartilhado. No SQL Editor, o aviso "creates tables without enabling RLS" da migration 1 é esperado: escolher "Run without RLS" (a RLS vem na migration 3).
+- **Operação com segredos:** links de convite/recuperação valem como senha. Comandos que os imprimem (`bootstrap-admin --execute`) rodam no **painel de Terminal do usuário**, e a saída desse terminal não é lida pelo assistente. Nunca exibir chaves em chat/terminal compartilhado; o `.env.local` é preenchido só pelo usuário. As chaves do dev apareceram no registro de uma sessão (leitura do `.env.local`): girar quando conveniente.
+- **Pedidos sensíveis exigem autorização expressa e por escrito do usuário:** commit (só na `fase-2`), qualquer escrita em projeto remoto, bootstrap, e-mails. Nunca push, merge ou deploy sem pedido explícito; nunca alterar a `main` nem a produção.
 
 ## Stack
 
@@ -60,6 +64,7 @@ npm run test:db      # só os testes de banco/RLS (src/test/db)
 npm run test:e2e     # build + Playwright: demo em :3100 (desktop+celular) e modo real em :3101
 npm run check        # lint + typecheck + testes (rodar antes de entregar)
 npm run env:check    # confere variáveis de ambiente sem abrir conexão nem imprimir chaves
+npm run net:check    # diagnostica timeouts: conexões TCP ao Supabase vs. destinos de controle (sem chaves)
 ```
 
 Se `next build` falhar com `EPERM ... .next` (OneDrive travando arquivos), apague `.next` e rode de novo.
@@ -87,8 +92,12 @@ src/lib/supabase/   server.ts (usuário, RLS), admin.ts (service_role, só servi
 src/proxy.ts        primeira barreira: anônimo em /admin, /portal, /redefinir-senha vai ao /login
 src/test/db/        harness PGlite + testes de esquema, RLS, isolamento e aprovação
 supabase/           migrations SQL, preflight.sql (banco vazio?), verify.sql (auditoria pós-migration), config.toml e modelos de e-mail
-scripts/            bootstrap-admin.mjs (primeiro administrador, roda uma vez)
+scripts/            bootstrap-admin.mjs (primeiro administrador, roda uma vez; já usado no dev), check-env.mjs, check-network.mjs
 docs/SUPABASE.md    passo a passo de configuração e variáveis
+docs/VALIDACAO-FASE-2.md     registro da validação (testes manuais do usuário x automatizados)
+docs/DIAGNOSTICO-REDE.md     timeouts de conexão: evidências, causa (rede local) e o que fazer
+docs/EMAIL-RESEND.md         recuperação de senha e SMTP com o Resend: o que falta
+docs/CHECKLIST-LANCAMENTO.md checklist de segurança e lançamento
 e2e/                testes Playwright
 public/brand/       logo e favicon copiados do site institucional
 ```
@@ -124,7 +133,7 @@ Origem: `Site-Luvi` (`CLAUDE.md` e `assets/css`). Tema **único e escuro**, toke
 
 ## Banco de dados e autenticação (Fase 2)
 
-- **Migrations são imutáveis depois de aplicadas** em qualquer projeto Supabase: mudança = nova migration. Enquanto nenhuma foi aplicada (hoje, nenhuma), pode-se corrigir in loco. Toda alteração em `supabase/migrations/` exige `npm run test:db` verde, com teste novo para a regra alterada.
+- **Migrations são imutáveis depois de aplicadas** em qualquer projeto Supabase: mudança = nova migration. **As quatro atuais já estão aplicadas no projeto de desenvolvimento (2026-11-02): não edite os arquivos, crie uma migration nova** (e rode `verify.sql` depois). Toda alteração em `supabase/migrations/` exige `npm run test:db` verde, com teste novo para a regra alterada.
 - **Função nova = `revoke execute on function … from public, anon;` na própria migration** (o Postgres abre EXECUTE a PUBLIC por padrão e isso não dá para desligar globalmente). `privileges.test.ts` audita o catálogo e reprova qualquer função/tabela/política fora da lista permitida; `supabase/verify.sql` é a mesma auditoria para rodar no projeto real.
 - Modelo: `organizations` → `profiles` (1:1 com `auth.users`, papel `admin|designer|atendimento|cliente`) → `clients` → `approvers` (vínculo opcional a um perfil de login) → `projects` → `materials` → `material_versions` (imutáveis) → `material_files` (um por slide) → `approval_requests` → `approval_links` (só o **hash** do token) → `comments` / `decisions` (imutáveis) / `audit_events`.
 - Todas as tabelas de negócio carregam `client_id`; FKs compostas impedem filho apontando para pai de outro cliente. Nada tem `ON DELETE CASCADE`: arquivar é `active = false`.
@@ -159,7 +168,7 @@ Origem: `Site-Luvi` (`CLAUDE.md` e `assets/css`). Tema **único e escuro**, toke
 
 ## Roteiro
 
-1. **Fase 1 (atual):** design system, layouts, dashboard, login, portal e aprovação rápida com dados fictícios.
-2. **Fase 2:** Supabase (schema, migrations, RLS, Auth por papel), Storage privado, upload real, links de aprovação reais, versões e histórico persistidos.
+1. **Fase 1 (concluída, publicada em modo demonstração):** design system, layouts, dashboard, login, portal e aprovação rápida com dados fictícios.
+2. **Fase 2 (em andamento, branch `fase-2`):** Módulos 1 (banco) e 2 (autenticação) **concluídos e validados no projeto de desenvolvimento**; faltam o Módulo 3 (Storage privado, upload real, versões) e o Módulo 4 (links de aprovação reais, decisões, histórico persistidos).
 3. **Fase 3:** e-mails via Resend (novo material, decisão tomada, lembrete de prazo), notificações, filtros/indicadores com dados reais.
 4. **Fase 4:** endurecimento (rate limit, auditoria, backups), observabilidade e publicação em `aprova.luvicompany.com.br` — somente com autorização.

@@ -2,7 +2,9 @@
 
 Guia para ligar a Fase 2 a um projeto Supabase e **validar os Módulos 1 (banco) e 2 (autenticação)** com segurança, sem tocar na produção atual (a demonstração da Fase 1 em `aprova.luvicompany.com.br`).
 
-> Nada neste guia foi executado contra um projeto real: tudo foi validado em testes locais (Postgres em memória + testes do app). A validação em nuvem é o que a seção 5 faz.
+> **Estado (2026-11-02):** a seção 5 foi executada no projeto de desenvolvimento **DB Aprova Luvi**: pré-voo, 4 migrations e `verify.sql` (16 blocos, todos com 0 linhas) aplicados e conferidos, primeiro administrador criado, login e rotas validados. O registro completo está em [`VALIDACAO-FASE-2.md`](VALIDACAO-FASE-2.md). **Não** há projeto de produção ainda. Documentos relacionados: [`EMAIL-RESEND.md`](EMAIL-RESEND.md) (recuperação de senha e SMTP), [`DIAGNOSTICO-REDE.md`](DIAGNOSTICO-REDE.md) (timeouts de conexão) e [`CHECKLIST-LANCAMENTO.md`](CHECKLIST-LANCAMENTO.md).
+>
+> Os passos abaixo continuam valendo como receita para **reproduzir** a configuração (por exemplo, no projeto de produção, com os ajustes da seção 6).
 
 ## 1. Decisão: o projeto existente é o ambiente de desenvolvimento e validação
 
@@ -136,7 +138,9 @@ Legenda: **[Você]** age no painel/terminal; **[Eu]** executo, mediante sua auto
     `20261102120000_core_schema.sql` → `20261102120100_functions.sql` → `20261102120200_rls_policies.sql` → `20261102120300_storage.sql`.
     (Alternativa: `supabase link --project-ref kswnwootbdzlhdvbhhpk` e `supabase db push --dry-run`, depois `supabase db push`.)
     Se a migration 4 falhar por permissão em `storage.objects`, aplique as 4 políticas pelo painel Storage > Policies com o mesmo SQL.
-17. Executar `supabase/verify.sql`. **Todos os blocos devem devolver 0 linhas.** Qualquer linha é uma violação a resolver antes de seguir.
+    O SQL Editor mostra um aviso "Potential issue detected: creates tables without enabling Row Level Security" ao executar a migration 1. Escolha **"Run without RLS"**: executa exatamente o arquivo revisado (a RLS é ligada na migration 3 e, antes disso, `anon`/`authenticated` não têm privilégio algum nas tabelas, porque a própria migration 1 revoga os padrões). "Run and enable RLS" faria o painel acrescentar comandos ao SQL.
+    Para conferir que o texto colado é o do repositório, compare o SHA-256 do editor com o do arquivo (`docs/VALIDACAO-FASE-2.md` lista os usados em 2026-11-02).
+17. Executar `supabase/verify.sql`. **Todos os blocos devem devolver 0 linhas.** Qualquer linha é uma violação a resolver antes de seguir. O arquivo tem **16 blocos `CHECK`**; como o SQL Editor mostra só o último resultado de um arquivo, rode cada bloco separadamente ou embrulhe cada um em `select count(*) from (…)`, como na validação de 2026-11-02.
 18. Storage: confirmar que o bucket `materials` existe e está **privado**.
 
 ### 5.8 Primeiro administrador — [Você]
@@ -149,6 +153,9 @@ Legenda: **[Você]** age no painel/terminal; **[Eu]** executo, mediante sua auto
 23. Conferir: `/portal` redireciona o administrador para `/admin`; "Sair" volta ao login; `/admin` sem sessão vai ao login com `?next=`.
 24. "Esqueci minha senha": o e-mail chega, o link aponta para `localhost`, a nova senha funciona e a sessão antiga é encerrada.
 25. Conferir no painel (Authentication > Users) que existe **só** o administrador e que ninguém consegue se cadastrar sozinho.
+
+> **Resultado em 2026-11-02:** passos 19 e 20 concluídos (administrador `admin@luvicompany.com.br`, papel `admin`); passos 21 a 23 e 25 aprovados (testes manuais do usuário e checagens do assistente). O passo **24 (recuperação de senha por e-mail) não foi testado**: depende de SMTP próprio (`EMAIL-RESEND.md`). Se o convite impresso expirar, o bootstrap não roda de novo (já existe perfil): peça um novo link.
+> Se aparecer "Este link expirou ou já foi usado" com o convite ainda válido, pode ser falha de rede, não o link: veja `DIAGNOSTICO-REDE.md` (`npm run net:check`).
 
 ### 5.10 Só depois
 26. Registrar o resultado (hash do commit, data, o que passou/falhou) e decidir o Módulo 3. **Não** configurar a produção, o domínio nem variáveis da Vercel nesta etapa.
