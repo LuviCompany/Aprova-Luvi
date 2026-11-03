@@ -33,7 +33,7 @@ export interface ProjectInput {
   dueDate: string | null;
 }
 
-const squash = (value: string) => value.replace(/\s+/g, " ").trim();
+export const squash = (value: string) => value.replace(/\s+/g, " ").trim();
 const stripAccents = (value: string) => value.normalize("NFD").replace(/\p{M}/gu, "");
 
 /** Partículas que não entram nas iniciais ("Casa de Pedra" => "CP"). */
@@ -121,7 +121,7 @@ export function parseClientInput(input: Record<string, unknown>): ParseResult<Cl
 }
 
 /** Confere se `YYYY-MM-DD` é uma data real (rejeita 2026-02-31). */
-function isRealDate(value: string): boolean {
+export function isRealDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;

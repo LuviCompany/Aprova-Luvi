@@ -5,7 +5,7 @@ export interface DbErrorLike {
   message?: string;
 }
 
-export type Entity = "cliente" | "projeto" | "aprovador" | "vinculo" | "convite";
+export type Entity = "cliente" | "projeto" | "aprovador" | "vinculo" | "convite" | "material";
 
 export const DENIED = "Você não tem permissão para esta ação.";
 
@@ -22,6 +22,8 @@ const KNOWN: Array<[RegExp, string]> = [
   [/aprovador inativo/i, "O aprovador está inativo."],
   [/já tem acesso ao portal/i, "Este aprovador já tem acesso ao portal."],
   [/não está em aberto/i, "Este convite não está mais em aberto."],
+  [/já enviado para aprovação/i, "Este material já foi enviado para aprovação: o conteúdo só muda numa nova revisão."],
+  [/operação de revisão/i, "Material aprovado: a nova versão só pode ser criada pela operação de revisão."],
 ];
 
 const DUPLICATE: Record<Entity, string> = {
@@ -30,6 +32,7 @@ const DUPLICATE: Record<Entity, string> = {
   aprovador: "Este e-mail já está cadastrado neste cliente.",
   vinculo: "Esta pessoa já está vinculada a este cliente.",
   convite: "Já existe um convite em aberto para este aprovador.",
+  material: "Esse material já existe.",
 };
 
 /**

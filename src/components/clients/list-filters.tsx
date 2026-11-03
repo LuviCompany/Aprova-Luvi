@@ -25,7 +25,15 @@ interface ListFiltersProps {
 export function ListFilters({ action, q, status, client, summary }: ListFiltersProps) {
   const active = !!q || status.value !== status.options[0]?.value || (!!client && client.value !== "");
   return (
-    <form method="get" action={action} role="search" className="mb-6 flex flex-col gap-3">
+    <form
+      // Campos não controlados ignoram mudanças de defaultValue: remonta o formulário quando os filtros da URL mudam
+      // (por exemplo, ao clicar em "Limpar"), senão os campos continuam mostrando o filtro antigo.
+      key={[q, status.value, client?.value ?? ""].join("|")}
+      method="get"
+      action={action}
+      role="search"
+      className="mb-6 flex flex-col gap-3"
+    >
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto] lg:items-end">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="filtro-busca">Buscar por nome</Label>

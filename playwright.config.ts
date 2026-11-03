@@ -57,6 +57,13 @@ export default defineConfig({
       testMatch: /clientes-projetos\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${CRUD_PORT}` },
     },
+    {
+      // Mesmo servidor falso (estado compartilhado): roda DEPOIS do crud-real, nunca em paralelo com ele.
+      name: "materiais-real",
+      testMatch: /materiais.spec.ts/,
+      dependencies: ["crud-real"],
+      use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${CRUD_PORT}` },
+    },
   ],
   webServer: [
     {

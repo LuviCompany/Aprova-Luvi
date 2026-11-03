@@ -81,6 +81,19 @@ describe("tabelas", () => {
     expect(await hasColumn("authenticated", "comments", "author_name", "INSERT")).toBe(false);
   });
 
+  it("materials: identificadores, tipo, status e autoria ficam fora do UPDATE; legenda, proporção e data de publicação entram", async () => {
+    for (const col of ["id", "project_id", "client_id", "type", "status", "created_by", "created_at", "updated_at"]) {
+      expect(await hasColumn("authenticated", "materials", col, "UPDATE"), `${col} UPDATE`).toBe(false);
+    }
+    for (const col of ["id", "status", "created_at", "updated_at"]) {
+      expect(await hasColumn("authenticated", "materials", col, "INSERT"), `${col} INSERT`).toBe(false);
+    }
+    for (const col of ["caption", "aspect_ratio", "publish_date"]) {
+      expect(await hasColumn("authenticated", "materials", col, "INSERT"), `${col} INSERT`).toBe(true);
+      expect(await hasColumn("authenticated", "materials", col, "UPDATE"), `${col} UPDATE`).toBe(true);
+    }
+  });
+
   it("convites de aprovador: o app só lê; criar e revogar passam pelas funções", async () => {
     expect(await hasTable("authenticated", "approver_invites", "SELECT")).toBe(true);
     expect(await hasAnyColumn("authenticated", "approver_invites", "INSERT,UPDATE")).toBe(false);

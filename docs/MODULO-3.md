@@ -7,7 +7,7 @@ Estado em **2026-11-02**. Autorizado o início do módulo pelo usuário; **etapa
 | Etapa | Escopo | Estado |
 |---|---|---|
 | **A** | Clientes (cadastro, edição, listagem, arquivamento) e projetos vinculados a clientes | **Concluída** (este documento) |
-| B | Cadastro de materiais: título, legenda, descrição, formato, data prevista de publicação | Não iniciada |
+| **B** | Cadastro de materiais: título, legenda, descrição, formato (tipo), proporção, canal, datas; exclusão controlada de rascunhos | **Implementada localmente; migrations B1 e B2 NÃO aplicadas; não commitada** (seção 12) |
 | C | Upload privado e seguro de imagens, vídeos e PDFs; consistência em caso de falha | Não iniciada |
 | D | Carrosséis com slides ordenados; histórico de versões sem sobrescrever | Não iniciada |
 | E | Dashboard integrado ao Supabase (indicadores com dados reais) | Não iniciada |
@@ -408,3 +408,99 @@ Depois do bloco, as contagens seguiam idênticas (2, 2, 2, 1, 11).
 ## 11.6 Dados fictícios que permanecem no banco de desenvolvimento
 
 Por decisão do usuário, **nada foi excluído**. Ficam no DB Aprova Luvi: 2 clientes (ambos ativos), 2 projetos, 2 aprovadores (mesma pessoa, uma linha por cliente; a do Studio Vento **inativa**), 1 convite `revogado` e **11 eventos de auditoria**. Os eventos são **imutáveis** (gatilhos e falta de grant): o app não consegue apagá-los, e o expurgo seria procedimento excepcional (`AUDITORIA.md`). O app também não exclui clientes, projetos nem aprovadores (só arquivar/desativar). Todos usam o prefixo "TESTE A2" e e-mails `@teste.invalid`; nenhum dado real. As consultas avulsas rodaram no SQL Editor sem salvar nada além de um rascunho de consulta privado do próprio painel.
+
+---
+
+# 12. Etapa B — Cadastro de materiais (implementada em 2026-11-04; migrations NÃO aplicadas)
+
+**Estado:** implementada e testada localmente; **não commitada**. As duas migrations (B1 e B2, `MIGRACOES-B.md`) **não foram aplicadas** em nenhum projeto Supabase: até a aplicação, as telas `/admin/materiais` do modo real não leem o projeto de desenvolvimento (faltam as colunas novas). Nada de upload, carrossel, versões, aprovação ou notificações foi implementado.
+
+## 12.1 Decisões aprovadas (e como ficaram)
+
+| # | Decisão | Implementação |
+|---|---|---|
+| 1 | Tipos `imagem`, `carrossel`, `video`, `pdf` + proporção opcional | coluna `aspect_ratio` (`1:1`, `4:5`, `9:16`, `outro`; vazio = não informada), CHECK no banco, seletor no formulário. O tipo **não** muda depois de criado (sem grant de UPDATE): o remédio é excluir o rascunho vazio e recriar |
+| 2 | Legenda em `materials` na B; cópia imutável por versão na D; arquitetura para os demais metadados | seção 12.3 |
+| 3 | Conteúdo travado depois de enviado/aprovado; **sem** voltar a rascunho por simples nova versão; operação explícita de revisão | trava no banco (B1) e a regra em `app.versions_before_insert`; operação de revisão **planejada** (12.4), não implementada |
+| 4 | Excluir só rascunho vazio, com confirmação e auditoria | RLS (rascunho não enviado) + chave estrangeira (sem versões) + ação do servidor + diálogo de confirmação + `material.deleted` |
+| 5 | Projeto concluído não recebe material, no servidor | `saveMaterialAction` recusa; **o banco não reforça**. Pode virar trava de banco numa migration futura (hoje o banco só garante o vínculo cliente-projeto e cliente ativo) |
+| 6 | Aviso, sem bloquear, quando a publicação é anterior ao prazo | aviso ao vivo no formulário (`publishBeforeApproval`); o servidor aceita |
+| 7 | Diálogos responsivos, acessíveis e confortáveis para legenda longa | diálogo largo (`sm:max-w-2xl`) que rola por dentro (`max-h-[calc(100dvh-2rem)]`), campos controlados (um envio recusado **não apaga** o que foi digitado), contador de caracteres com `aria-live`, rótulos e erros ligados por `aria-describedby` |
+
+## 12.2 O que foi entregue
+
+- **Migrations B1 e B2** (`supabase/migrations/20261104120000_…` e `…120100_…`; conteúdo, hashes e procedimento em `MIGRACOES-B.md`) e `verify.sql` com 25 blocos.
+- **Grants revisados:** o app não altera diretamente `status`, `id`, `project_id`, `client_id`, `type`, `created_by`, `created_at` nem `updated_at` de `materials` (testes de catálogo, de banco e `verify.sql` bloco 25).
+- **`/admin/materiais` (modo real):** lista com busca por título, filtros por cliente, projeto (em cascata), status e tipo, paginação de 20 em 20, e "Novo material" em diálogo. **`/admin/materiais/[id]`:** legenda (com quebras de linha), descrição, proporção, canal, datas, nota sobre arquivos (etapa C), "Editar" e "Excluir" (só rascunho sem versão). No modo demonstração as duas telas continuam com os dados fictícios da Fase 1.
+- **Permissões:** `authorizeStaff()` sem exigir `manageClients`: **designer, atendimento e admin** cadastram, editam e excluem (espelha a RLS); aprovador e anônimo não. Nenhuma operação usa a chave secreta (`no-secret-key.test.ts` cobre `src/lib/materials` e `src/components/materials`).
+- **Auditoria:** `material.created`, `material.updated`, `material.deleted`, sem título, legenda nem descrição (`AUDITORIA.md`).
+- **Correção encontrada pelo E2E (também na etapa A):** depois de "Limpar", os campos dos filtros continuavam mostrando o filtro antigo (selects e busca não controlados ignoram a mudança de `defaultValue` na navegação). Os formulários de filtro de **materiais, clientes e projetos** agora são remontados quando os filtros da URL mudam; teste de componente nos dois.
+
+## 12.3 Arquitetura para preservar o que o cliente vê (etapa D)
+
+O que o cliente enxerga ao aprovar é uma lista fixa de campos (`PRESENTED_FIELDS` em `src/lib/materials/schema.ts`): título, descrição, legenda, tipo, proporção, canal, data de publicação e prazo. Desses, os **travados** pelo banco depois do envio são `LOCKED_CONTENT_FIELDS` (título, descrição, legenda, canal, proporção; o tipo já é imutável); as **datas** continuam editáveis (reagendar não muda a arte nem o texto).
+
+Como a trava só cobre o material **vivo**, o que foi mostrado numa versão precisa ser guardado à parte. Proposta para a etapa D (a aprovar no plano dela):
+
+1. Uma tabela imutável `material_version_contents` (uma linha por versão: `version_id`, `material_id`, `client_id`, `content jsonb` com os `PRESENTED_FIELDS`, `frozen_at`), com FK composta, RLS (equipe vê tudo; aprovador só de versão enviada), sem UPDATE nem DELETE.
+2. A cópia é gravada **no envio** da versão para aprovação (gatilho/função do pedido de aprovação, que já valida arquivos e versão mais recente), e não na criação da versão: assim o rascunho continua editável até o envio e a cópia reflete exatamente o que o cliente recebeu.
+3. O portal e o link seguro leem **a cópia** da versão, nunca o material vivo; o histórico mostra a cópia de cada versão.
+4. Teste de banco "a lista de campos da cópia é a mesma de `PRESENTED_FIELDS`", como já existe para os campos travados.
+
+## 12.4 Operação explícita de revisão (planejada, não implementada)
+
+Problema hoje: `app.versions_before_insert()` voltava o material a rascunho em **qualquer** nova versão, inclusive de material aprovado. A B1 já fecha isso: material `aprovado` recusa nova versão sem o sinal `app.revision_in_progress = 'on'`. Falta a função que liga o sinal (etapa D):
+
+`public.start_material_revision(p_material_id uuid, p_reason text)` — `SECURITY DEFINER`, `search_path = ''`, `revoke … from public, anon`, só equipe com acesso ao cliente:
+
+1. Aceita só material `aprovado` ou `alteracao` e **sem** solicitação aberta; para `aprovado`, exige o motivo (curto, validado) e a confirmação na tela (a decisão anterior continua valendo no histórico).
+2. Liga `app.revision_in_progress` **na transação**, cria a próxima versão (copiando a numeração e **sem tocar** nas versões, arquivos, decisões nem cópias de conteúdo anteriores), devolve o material a `rascunho` e desliga o sinal.
+3. Audita `material.revision_started` (`status_from`, `status_to`; **sem** o texto do motivo no metadata, só o tamanho ou um código; o motivo fica numa coluna imutável da versão).
+4. Testes: material aprovado recusa nova versão por qualquer outro caminho; a função preserva versões, decisões e cópias; o sinal não vaza para a transação seguinte; designer e atendimento podem, aprovador não; `verify.sql` ganha o bloco da função (só `authenticated` e `service_role`).
+
+## 12.5 Arquivos
+
+**Criados (17):** `supabase/migrations/20261104120000_materials_content_and_guards.sql`, `supabase/migrations/20261104120100_audit_materials.sql`, `docs/MIGRACOES-B.md`; `src/lib/materials/{schema,selects,queries,schema.test,queries.test}.ts`; `src/app/admin/materiais/{actions.ts,actions.test.ts}`; `src/components/materials/{material-form-dialog,delete-material-button,material-filters,materials-list}.tsx` e `materials-ui.test.tsx`; `src/test/db/materials-b.test.ts`; `e2e/materiais.spec.ts`.
+
+**Modificados (15):** `supabase/verify.sql` (25 blocos), `src/app/admin/materiais/page.tsx` e `[id]/page.tsx` (real + demonstração), `src/lib/clients/errors.ts` (entidade "material" e mensagens das travas), `src/lib/clients/schema.ts` (exporta `squash` e `isRealDate`), `src/components/auth/auth-layout.tsx` (tom "aviso" no `Notice`), `src/components/clients/list-filters.tsx` (remonta o formulário) e `clients-ui.test.tsx`, `src/test/db/privileges.test.ts`, `src/test/no-secret-key.test.ts`, `e2e/support/mock-supabase.mjs` (materiais), `playwright.config.ts` (projeto `materiais-real`), `docs/*` e `CLAUDE.md`.
+
+## 12.6 Testes
+
+| Verificação | Resultado |
+|---|---|
+| Lint e `tsc` | Limpos |
+| Vitest (suíte inteira) | **621 aprovados em 37 arquivos** (antes: 511 em 32) |
+| — banco (Postgres em memória, 10 migrations) | **235**; 34 novos em `materials-b.test.ts` (grants por coluna, cadastro por papel, FK composta, limites de legenda e proporção, cliente arquivado até para o servidor, trava de conteúdo por status e por campo, aprovado sem volta a rascunho, sinal de revisão restrito à transação, exclusão, auditoria sem texto livre, só o admin lê); +1 em `privileges.test`; +3 blocos do `verify.sql` |
+| — validação, consultas, ações | 18 + 11 + 21 |
+| — componentes | 21 novos (+1 em clientes) |
+| Prova de que os testes não são vazios | sem a B2, 2 testes falham; sem B1 e B2, 30 falham; sem a remontagem dos filtros, os 2 testes de "Limpar" falham |
+| Build de produção isolado | 19 rotas, sem avisos |
+| E2E (Playwright, 4 servidores) | **95 de 95** (83 anteriores + 12 novos de materiais) |
+
+Limites do que foi provado: o servidor falso do E2E **não prova a RLS** nem as constraints (isso é do teste de banco); as consultas com `select` embutido (`clients(...)`, `projects(...)`, `versions:material_versions(count)`) **ainda não foram executadas contra o PostgREST real** (as colunas novas só existem depois da B1) — validar logo após a aplicação.
+
+## 12.7 Critérios de aceite da etapa B
+
+| # | Critério | Resultado | Evidência |
+|---|---|---|---|
+| 1 | Admin, atendimento e designer cadastram e editam em cliente ativo; aprovador e anônimo não, no servidor e no banco | Atendido | `actions.test`, `materials-b.test`, E2E |
+| 2 | Projeto pertence ao cliente (banco); projeto concluído recusado (servidor) | Atendido | FK composta, `actions.test` |
+| 3 | Cliente arquivado não recebe material novo (banco, inclusive `service_role`) | Atendido | B1, `materials-b.test` |
+| 4 | Conteúdo travado fora de rascunho; datas editáveis | Atendido | B1, banco, ação, componente e E2E |
+| 5 | `status`, `type`, `project_id`, `client_id`, `created_by` não graváveis pelo app | Atendido | catálogo, `verify.sql` 25, banco |
+| 6 | Só rascunho vazio é excluído | Atendido | RLS + FK + ação + E2E |
+| 7 | Auditoria de criar, editar e excluir, sem texto livre | Atendido | B2, `materials-b.test` |
+| 8 | Telas reais não leem `src/lib/mock`; demonstração intacta | Atendido | E2E (real e demo) |
+| 9 | Nenhuma operação usa a chave secreta | Atendido | `no-secret-key.test` |
+| 10 | Suíte inteira, build e E2E verdes | Atendido | 12.6 |
+| 11 | Validação no banco real após autorização | **Pendente** | `MIGRACOES-B.md`, seção 3 |
+| 12 | Material aprovado não volta a rascunho por nova versão simples | Atendido (regra) / operação de revisão **planejada** | B1, 12.4 |
+
+## 12.8 Pendências e riscos
+
+1. **Aplicar B1 e B2** no projeto de desenvolvimento (só com autorização expressa, uma por vez) e rodar o teste operacional com dados "TESTE B"; depois validar as consultas com `select` embutido contra o PostgREST real.
+2. **Commit** aguardando autorização.
+3. A trava de conteúdo só pode ser vista no banco real quando um material sair de rascunho (Módulo 4); até lá, é provada pelos testes de banco.
+4. Regra de projeto concluído só no servidor (12.1, item 5).
+5. Sem arquivos: o material fica `rascunho` até as etapas C e D; o portal não mostra nada (a RLS só mostra material enviado).
+6. Observação de baixa prioridade herdada da A.2: formulário que perde o texto depois de recusa. **Resolvido nos diálogos de material** (campos controlados); os diálogos de cliente, projeto e aprovador da etapa A seguem como estavam.

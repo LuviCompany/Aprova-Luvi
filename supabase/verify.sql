@@ -163,3 +163,36 @@ where exists (select 1 from pg_constraint where conname = 'approvers_profile_id_
 select id, action
 from public.audit_events
 where metadata ?| array['name', 'email', 'full_name', 'job_title', 'note', 'body', 'title'];
+
+-- ---------------------------------------------------------------------------
+-- Módulo 3, etapa B (migrations 20261104120000 e 20261104120100). Estes blocos só passam DEPOIS
+-- de aplicar as duas migrations da etapa B; antes delas, os blocos "ausente" devolvem linhas.
+-- ---------------------------------------------------------------------------
+
+-- CHECK: gatilhos de material ausentes (trava de conteúdo e guarda de cliente arquivado)
+select t.nome as gatilho
+from (values ('materials_guard_content'), ('materials_guard_active_client')) as t(nome)
+where not exists (
+  select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
+  where c.relname = 'materials' and g.tgname = t.nome and not g.tgisinternal
+);
+
+-- CHECK: auditoria de materiais ausente (gatilho em INSERT, UPDATE e DELETE)
+select 'materials_audit_row ausente ou sem INSERT/UPDATE/DELETE' as problema
+where not exists (
+  select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
+  where c.relname = 'materials' and g.tgname = 'materials_audit_row' and not g.tgisinternal
+    and (g.tgtype & 28) = 28
+);
+
+-- CHECK: colunas protegidas de materials graváveis pelo app (identificadores, status, tipo, autoria)
+select c.col as coluna_com_update
+from (values ('id'), ('project_id'), ('client_id'), ('type'), ('status'), ('created_by'), ('created_at'), ('updated_at')) as c(col)
+where has_column_privilege('authenticated', 'public.materials', c.col, 'UPDATE')
+union all
+select c.col || ' (insert)'
+from (values ('id'), ('status'), ('created_at'), ('updated_at')) as c(col)
+where has_column_privilege('authenticated', 'public.materials', c.col, 'INSERT')
+union all
+select 'anon com privilégio em materials'
+where has_any_column_privilege('anon', 'public.materials', 'SELECT,INSERT,UPDATE');

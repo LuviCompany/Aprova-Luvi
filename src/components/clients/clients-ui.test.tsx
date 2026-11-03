@@ -257,6 +257,15 @@ describe("cartões", () => {
 describe("ListFilters", () => {
   const status = { value: "ativos", options: [{ value: "ativos", label: "Ativos" }, { value: "todos", label: "Todos" }] };
 
+  it("os campos acompanham os filtros da URL: ao limpar, o select e a busca voltam ao padrão", () => {
+    const { rerender } = render(<ListFilters action="/admin/clientes" q="casa" status={{ ...status, value: "todos" }} summary="1 cliente" />);
+    expect(screen.getByLabelText("Status")).toHaveValue("todos");
+    expect(screen.getByLabelText("Buscar por nome")).toHaveValue("casa");
+    rerender(<ListFilters action="/admin/clientes" q="" status={status} summary="3 clientes" />);
+    expect(screen.getByLabelText("Status")).toHaveValue("ativos");
+    expect(screen.getByLabelText("Buscar por nome")).toHaveValue("");
+  });
+
   it("é um formulário GET (filtros na URL) e só oferece Limpar quando há filtro", () => {
     const { rerender } = render(<ListFilters action="/admin/clientes" q="" status={status} summary="3 clientes" />);
     const form = screen.getByRole("search");

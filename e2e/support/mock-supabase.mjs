@@ -10,6 +10,9 @@
  * projeto real. As regras de banco imitadas aqui (convite, vínculo, cliente arquivado) existem só
  * para a interface ter o que reagir.
  *
+ * Materiais (etapa B): imita o PostgREST de `materials` (lista com contagem e página, cadastro, edição, exclusão) e as
+ * travas do banco que a interface precisa ver (conteúdo travado fora de rascunho, cliente arquivado, FK de versões).
+ *
  * Usuários de teste (qualquer senha): admin@luvi.test, atendimento@luvi.test, designer@luvi.test,
  * cliente@luvi.test (aprova para 2 empresas) e cliente1@luvi.test (aprova para 1).
  */
@@ -27,7 +30,9 @@ const USERS = {
 };
 const byId = (id) => Object.entries(USERS).find(([, u]) => u.id === id);
 
-const fresh = () => ({ clients: [], projects: [], approvers: [], invites: [] });
+const fresh = () => ({ clients: [], projects: [], approvers: [], invites: [], materials: [], versions: [] });
+let tick = 0;
+const stamp = () => new Date(Date.UTC(2026, 10, 3, 12, 0, tick++)).toISOString();
 let state = fresh();
 
 const b64 = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -80,7 +85,7 @@ function likeToRegExp(pattern) {
 
 function matches(row, params) {
   for (const [key, raw] of params) {
-    if (["select", "order", "limit"].includes(key) || key.includes(".")) continue;
+    if (["select", "order", "limit", "offset"].includes(key) || key.includes(".")) continue;
     const dot = raw.indexOf(".");
     const op = raw.slice(0, dot);
     const value = raw.slice(dot + 1);
@@ -142,6 +147,11 @@ async function handle(req, res) {
     const body = await readBody(req);
     for (const c of body.clients ?? []) state.clients.push({ segment: "", initials: "XX", active: true, organization_id: ORG, ...c });
     for (const a of body.approvers ?? []) state.approvers.push({ job_title: "", active: true, profile_id: null, ...a });
+    for (const p of body.projects ?? []) state.projects.push({ description: "", due_date: null, status: "ativo", ...p });
+    for (const m of body.materials ?? []) {
+      state.materials.push({ status: "rascunho", description: "", caption: "", channel: "", aspect_ratio: null, publish_date: null, due_date: null, created_at: stamp(), updated_at: stamp(), ...m });
+    }
+    for (const v of body.versions ?? []) state.versions.push({ id: randomUUID(), ...v });
     return send(res, 200, { ok: true });
   }
 
@@ -261,7 +271,7 @@ async function handle(req, res) {
         200,
         rows.map((p) => {
           const client = clientOf(p.client_id);
-          return { ...p, clients: client ? { name: client.name, active: client.active } : null, materials: [{ count: 0 }], approved: [{ count: 0 }] };
+          return { ...p, clients: client ? { name: client.name, active: client.active } : null, materials: [{ count: state.materials.filter((m) => m.project_id === p.id).length }], approved: [{ count: state.materials.filter((m) => m.project_id === p.id && m.status === "aprovado").length }] };
         }),
       );
     }
@@ -277,6 +287,73 @@ async function handle(req, res) {
       const body = await readBody(req);
       const rows = state.projects.filter((p) => matches(p, params));
       for (const row of rows) Object.assign(row, body);
+      return wantsRows(req) ? send(res, 200, rows.map((r) => ({ id: r.id }))) : send(res, 204);
+    }
+  }
+
+  if (table === "materials") {
+    const CONTENT = ["title", "description", "caption", "channel", "aspect_ratio"];
+    const PROTECTED = ["id", "status", "client_id", "project_id", "type", "created_by", "created_at", "updated_at"];
+    const embed = (m) => {
+      const client = clientOf(m.client_id);
+      const project = state.projects.find((p) => p.id === m.project_id);
+      return {
+        ...m,
+        clients: client ? { name: client.name, active: client.active } : null,
+        projects: project ? { name: project.name, status: project.status } : null,
+        versions: [{ count: state.versions.filter((v) => v.material_id === m.id).length }],
+      };
+    };
+    if (req.method === "GET") {
+      if (!isStaff) return send(res, 200, []); // a RLS do portal só mostra material enviado (nenhum, no mock)
+      const rows = state.materials
+        .filter((m) => matches(m, params))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id));
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      const limit = url.searchParams.get("limit") ? Number(url.searchParams.get("limit")) : rows.length;
+      const page = rows.slice(offset, offset + limit);
+      const range = page.length ? `${offset}-${offset + page.length - 1}` : "*";
+      const headers = /count=exact/.test(req.headers.prefer ?? "") ? { "content-range": `${range}/${rows.length}` } : {};
+      return send(res, 200, page.map(embed), headers);
+    }
+    if (req.method === "POST") {
+      if (!isStaff) return send(res, 403, rlsError("materials"));
+      const body = await readBody(req);
+      if (body.created_by !== who.id) return send(res, 403, rlsError("materials"));
+      if ("status" in body || "id" in body) return send(res, 403, { code: "42501", message: "permission denied for table materials" });
+      if (!clientOf(body.client_id)?.active) return send(res, 400, raise("cliente arquivado: reative o cliente antes de cadastrar em materials", "23514"));
+      if (!state.projects.some((p) => p.id === body.project_id && p.client_id === body.client_id)) {
+        return send(res, 409, { code: "23503", message: "violates foreign key constraint" });
+      }
+      if (String(body.caption ?? "").length > 2200) return send(res, 400, { code: "23514", message: "violates check constraint" });
+      const row = { id: randomUUID(), status: "rascunho", description: "", caption: "", channel: "", aspect_ratio: null, publish_date: null, due_date: null, created_at: stamp(), updated_at: stamp(), ...body };
+      state.materials.push(row);
+      return wantsRows(req) ? send(res, 201, [row]) : send(res, 201);
+    }
+    if (req.method === "PATCH") {
+      if (!isStaff) return send(res, 200, []);
+      const body = await readBody(req);
+      if (PROTECTED.some((k) => k in body)) return send(res, 403, { code: "42501", message: "permission denied for table materials" });
+      const rows = state.materials.filter((m) => matches(m, params));
+      for (const row of rows) {
+        if (row.status !== "rascunho" && CONTENT.some((k) => k in body && body[k] !== row[k])) {
+          return send(res, 400, raise("material já enviado para aprovação: o conteúdo só muda numa nova revisão", "23514"));
+        }
+      }
+      for (const row of rows) {
+        Object.assign(row, body);
+        row.updated_at = stamp();
+      }
+      return wantsRows(req) ? send(res, 200, rows.map((r) => ({ id: r.id }))) : send(res, 204);
+    }
+    if (req.method === "DELETE") {
+      if (!isStaff) return send(res, 403, { code: "42501", message: "permission denied for table materials" });
+      // RLS: só rascunho; FK: nada com versão.
+      const rows = state.materials.filter((m) => matches(m, params) && m.status === "rascunho");
+      if (rows.some((r) => state.versions.some((v) => v.material_id === r.id))) {
+        return send(res, 409, { code: "23503", message: "violates foreign key constraint" });
+      }
+      state.materials = state.materials.filter((m) => !rows.includes(m));
       return wantsRows(req) ? send(res, 200, rows.map((r) => ({ id: r.id }))) : send(res, 204);
     }
   }

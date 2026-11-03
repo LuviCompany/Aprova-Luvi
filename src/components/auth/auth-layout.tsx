@@ -27,11 +27,12 @@ export function AuthLayout({ title, description, children, footer }: AuthLayoutP
   );
 }
 
-export function Notice({ tone, children }: { tone: "error" | "success" | "info"; children: ReactNode }) {
+export function Notice({ tone, children }: { tone: "error" | "success" | "info" | "warning"; children: ReactNode }) {
   const styles = {
     error: "border-destructive/30 bg-destructive/10 text-destructive",
     success: "border-success/30 bg-success/10 text-success",
     info: "border-white/10 bg-white/[0.03] text-muted-foreground",
+    warning: "border-warning/30 bg-warning/10 text-warning",
   } as const;
   return (
     <p

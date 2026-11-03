@@ -8,7 +8,7 @@ Estado em **2026-11-02** (Módulo 3, etapa A.2). A tabela `public.audit_events` 
 |---|---|---|
 | `organization_id` | Organização do cliente afetado (derivada do cliente, nunca do navegador) | organização |
 | `actor_profile_id` | `auth.uid()` de quem agiu: o **perfil** do responsável. Nulo quando a ação é do servidor (`service_role`: bootstrap, rotinas) | identificador do responsável |
-| `entity_type` + `entity_id` | Tipo (`client`, `project`, `approver`, `approver_invite`) e `id` do registro afetado | registro afetado |
+| `entity_type` + `entity_id` | Tipo (`client`, `project`, `approver`, `approver_invite`, `material`) e `id` do registro afetado | registro afetado |
 | `action` | Tipo da ação (tabela abaixo) | tipo da ação |
 | `created_at` | Data e hora do banco (`now()`), imutável | data/hora |
 | `metadata` | Só: `client_id`, `actor_role` (papel do responsável naquele momento), `changed` (**nomes** das colunas alteradas) e, para status/ativo, `status_from` e `status_to` | rastreabilidade sem dados pessoais |
@@ -16,6 +16,8 @@ Estado em **2026-11-02** (Módulo 3, etapa A.2). A tabela `public.audit_events` 
 ### Ações
 
 `client.created`, `client.updated`, `client.archived`, `client.reactivated`, `project.created`, `project.updated` (com `status_from`/`status_to` quando o status muda), `approver.created`, `approver.linked` (vínculo de uma pessoa a outro cliente), `approver.updated`, `approver.deactivated`, `approver.reactivated`, `approver_invite.prepared`, `approver_invite.revoked` (e `sent`, `accepted`, `expired` quando a Fase 3 existir).
+
+Etapa B (migration B2, **ainda não aplicada**): `material.created`, `material.updated` (nomes das colunas alteradas; `status_from`/`status_to` quando o status muda, inclusive pelas funções de aprovação) e `material.deleted` (`status_from`). Como nos demais, o evento não leva título, legenda nem descrição. Excluir material é o único caso de exclusão auditado (só rascunho vazio).
 
 Já existiam: `version.created`, `file.added`, `approval_request.created`, `approval_link.created`, `approval_link.revoked`, `approval_request.cancelled`, `decision.recorded`.
 
