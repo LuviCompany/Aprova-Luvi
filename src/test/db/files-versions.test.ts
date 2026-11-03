@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PRESENTED_FIELDS } from "@/lib/materials/schema";
-import { IDS, createMaterial, createTestDb, errorOf, seedBase, type TestDb } from "./harness";
+import { IDS, createMaterial, insertRequest, createTestDb, errorOf, seedBase, type TestDb } from "./harness";
 
 /**
  * Módulo 3, etapas C e D (migrations C1 e C2): regras dos arquivos, ordenação de slides, conteúdo
@@ -201,7 +201,7 @@ describe("conteúdo congelado por versão", () => {
     await addFile(m);
     expect(await contentOf(m.versionId)).toBeUndefined(); // rascunho: ainda não congelado
     await db.query("update public.materials set channel = 'Instagram Feed', aspect_ratio = '4:5', publish_date = '2026-12-01', due_date = '2026-11-20' where id = $1", [m.materialId]);
-    await db.query("insert into public.approval_requests (material_id, version_id, client_id, requested_by) values ($1,$2,$3,$4)", [m.materialId, m.versionId, m.clientId, IDS.designer]);
+    await insertRequest(db, { materialId: m.materialId, versionId: m.versionId, clientId: m.clientId });
     const content = (await contentOf(m.versionId))!;
     expect(Object.keys(content).sort()).toEqual([...PRESENTED_FIELDS, "files"].sort());
     expect(content).toMatchObject({
@@ -222,7 +222,7 @@ describe("conteúdo congelado por versão", () => {
   it("o material pode ser reagendado depois, mas a cópia da versão enviada não muda", async () => {
     const m = await newMaterial("imagem", { caption: "Original" });
     await addFile(m);
-    await db.query("insert into public.approval_requests (material_id, version_id, client_id, requested_by) values ($1,$2,$3,$4)", [m.materialId, m.versionId, m.clientId, IDS.designer]);
+    await insertRequest(db, { materialId: m.materialId, versionId: m.versionId, clientId: m.clientId });
     const before = await contentOf(m.versionId);
     await db.asUser(IDS.designer, () => db.query("update public.materials set publish_date = '2027-01-10' where id = $1", [m.materialId]));
     expect(await contentOf(m.versionId)).toEqual(before);
@@ -231,7 +231,7 @@ describe("conteúdo congelado por versão", () => {
   it("é imutável (até para o dono do banco) e o app só lê", async () => {
     const m = await newMaterial("imagem");
     await addFile(m);
-    await db.query("insert into public.approval_requests (material_id, version_id, client_id, requested_by) values ($1,$2,$3,$4)", [m.materialId, m.versionId, m.clientId, IDS.designer]);
+    await insertRequest(db, { materialId: m.materialId, versionId: m.versionId, clientId: m.clientId });
     expect(await errorOf(() => db.query("update public.material_version_contents set content = '{}' where version_id = $1", [m.versionId]))).toMatch(/imutável/);
     expect(await errorOf(() => db.query("delete from public.material_version_contents where version_id = $1", [m.versionId]))).toMatch(/imutável/);
     expect(await errorOf(() => db.exec("truncate public.material_version_contents"))).toMatch(/imutável/);
@@ -249,7 +249,7 @@ describe("conteúdo congelado por versão", () => {
   it("RLS: a equipe lê; o aprovador só lê versão ENVIADA do próprio cliente; anônimo nada", async () => {
     const sent = await newMaterial("imagem");
     await addFile(sent);
-    await db.query("insert into public.approval_requests (material_id, version_id, client_id, requested_by) values ($1,$2,$3,$4)", [sent.materialId, sent.versionId, sent.clientId, IDS.designer]);
+    await insertRequest(db, { materialId: sent.materialId, versionId: sent.versionId, clientId: sent.clientId });
     const draft = await newMaterial("imagem");
     await db.query("select app.freeze_version_content($1)", [draft.versionId]); // congelada sem envio (ex.: rascunho substituído)
     const count = (user: string, id: string) =>

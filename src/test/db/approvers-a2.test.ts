@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { IDS, createMaterial, createTestDb, errorOf, seedBase, sha256Hex, uid, type TestDb } from "./harness";
+import { IDS, createMaterial, createTestDb, errorOf, openLinkSession, seedBase, sha256Hex, uid, type TestDb } from "./harness";
 
 /**
  * Módulo 3, etapa A.2: as quatro migrations 20261103120000 a 20261103120300 (integridade de
@@ -237,8 +237,9 @@ describe("M2 — desativar um aprovador", () => {
     const linkDoAprovador = await db.asUser(IDS.designer, async () =>
       (await db.query<{ id: string }>("select public.create_approval_link($1, $2, $3, now() + interval '7 days') as id", [aberta.requestId, IDS.aprovadorA, sha256Hex("l-a")])).rows[0].id,
     );
+    const abertaDeOutro = await createMaterial(db, { clientId: IDS.clienteA, projectId: IDS.projetoA, sent: true, title: "Em aberto (outro aprovador)", approverId: IDS.aprovadorALink });
     const linkDeOutro = await db.asUser(IDS.designer, async () =>
-      (await db.query<{ id: string }>("select public.create_approval_link($1, $2, $3, now() + interval '7 days') as id", [aberta.requestId, IDS.aprovadorALink, sha256Hex("l-b")])).rows[0].id,
+      (await db.query<{ id: string }>("select public.create_approval_link($1, $2, $3, now() + interval '7 days') as id", [abertaDeOutro.requestId, IDS.aprovadorALink, sha256Hex("l-b")])).rows[0].id,
     );
 
     expect(await run(as.atendimento, "update public.approvers set active = false where id = $1", [IDS.aprovadorA])).toBeNull();
@@ -270,11 +271,12 @@ describe("M2 — desativar um aprovador", () => {
   });
 
   it("link já usado não é alterado (só pendentes)", async () => {
-    const m = await createMaterial(db, { clientId: IDS.clienteA, projectId: IDS.projetoA, sent: true, title: "Link usado" });
+    const m = await createMaterial(db, { clientId: IDS.clienteA, projectId: IDS.projetoA, sent: true, title: "Link usado", approverId: IDS.aprovadorALink });
     const id = await db.asUser(IDS.designer, async () =>
       (await db.query<{ id: string }>("select public.create_approval_link($1, $2, $3, now() + interval '7 days') as id", [m.requestId, IDS.aprovadorALink, sha256Hex("usado")])).rows[0].id,
     );
-    await db.asService(() => db.query("select public.decide_via_link($1, 'aprovado', '')", [id]));
+    const sessao = await openLinkSession(db, "usado");
+    await db.asService(() => db.query("select public.decide_with_link_session($1, $2, 'aprovado', '')", [sessao.tokenHash, sessao.sessionHash]));
     await run(as.admin, "update public.approvers set active = false where id = $1", [IDS.aprovadorALink]);
     const [row] = await rows<{ used_at: string | null; revoked_at: string | null }>("select used_at, revoked_at from public.approval_links where id = $1", [id]);
     expect(row.used_at).not.toBeNull();

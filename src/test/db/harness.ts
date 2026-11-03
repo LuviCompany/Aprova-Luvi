@@ -181,7 +181,7 @@ const next = () => uid(++counter);
 /** Cria material + versão + arquivo (e, opcionalmente, a solicitação aberta). Como superusuário. */
 export async function createMaterial(
   db: TestDb,
-  opts: { clientId: string; projectId: string; sent?: boolean; title?: string },
+  opts: { clientId: string; projectId: string; sent?: boolean; title?: string; approverId?: string },
 ): Promise<SentMaterial> {
   const materialId = next();
   const versionId = next();
@@ -208,12 +208,37 @@ export async function createMaterial(
     [filePath],
   );
   if (opts.sent) {
-    await db.query(
-      "insert into public.approval_requests (id, material_id, version_id, client_id, requested_by) values ($1,$2,$3,$4,$5)",
-      [requestId, materialId, versionId, opts.clientId, IDS.designer],
-    );
+    await insertRequest(db, {
+      id: requestId, materialId, versionId, clientId: opts.clientId, approverId: opts.approverId,
+    });
   }
   return { materialId, versionId, requestId, filePath };
+}
+
+/** Aprovador padrão (com login) de cada cliente de teste. */
+export const defaultApprover = (clientId: string): string =>
+  clientId === IDS.clienteB ? IDS.aprovadorB : IDS.aprovadorA;
+
+/**
+ * Cria UMA solicitação individual como superusuário (o app não tem mais INSERT direto: usa
+ * public.submit_for_approval). Sem submissionId, abre uma rodada nova.
+ */
+export async function insertRequest(
+  db: TestDb,
+  r: {
+    id?: string; materialId: string; versionId: string; clientId: string;
+    approverId?: string; submissionId?: string; requestedBy?: string;
+  },
+): Promise<string> {
+  const id = r.id ?? next();
+  await db.query(
+    `insert into public.approval_requests
+       (id, material_id, version_id, client_id, requested_by, approver_id, submission_id)
+     values ($1,$2,$3,$4,$5,$6,$7)`,
+    [id, r.materialId, r.versionId, r.clientId, r.requestedBy ?? IDS.designer,
+     r.approverId ?? defaultApprover(r.clientId), r.submissionId ?? next()],
+  );
+  return id;
 }
 
 export const sha256Hex = (seed: string): string => {
@@ -221,6 +246,22 @@ export const sha256Hex = (seed: string): string => {
   const hex = Buffer.from(seed).toString("hex").padEnd(64, "0").slice(0, 64);
   return hex;
 };
+
+/** Hashes determinísticos de teste para o fluxo de link (o servidor real usa HMAC). */
+export const codeHashOf = (token: string): string => sha256Hex(`code-${token}`);
+export const sessionHashOf = (token: string): string => sha256Hex(`sess-${token}`);
+
+/** Percorre o fluxo do servidor: emite o código e o confere, abrindo a sessão do link. */
+export async function openLinkSession(db: TestDb, token: string): Promise<{ tokenHash: string; sessionHash: string }> {
+  const tokenHash = sha256Hex(token);
+  await db.asService(async () => {
+    const issued = await db.query<{ r: { status: string } }>("select public.link_issue_code($1, $2) as r", [tokenHash, codeHashOf(token)]);
+    if (issued.rows[0].r.status !== "ok") throw new Error(`código não emitido: ${issued.rows[0].r.status}`);
+    const checked = await db.query<{ r: { status: string } }>("select public.link_verify_code($1, $2, $3) as r", [tokenHash, codeHashOf(token), sessionHashOf(token)]);
+    if (checked.rows[0].r.status !== "ok") throw new Error(`código recusado: ${checked.rows[0].r.status}`);
+  });
+  return { tokenHash, sessionHash: sessionHashOf(token) };
+}
 
 /** Executa e devolve a mensagem de erro (ou null se não falhou). */
 export async function errorOf(fn: () => Promise<unknown>): Promise<string | null> {

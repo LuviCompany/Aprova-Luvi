@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { IDS, createMaterial, createTestDb, errorOf, seedBase, uid, type TestDb } from "./harness";
+import { IDS, createMaterial, createTestDb, insertRequest, errorOf, seedBase, uid, type TestDb } from "./harness";
 
 let db: TestDb;
 
@@ -138,10 +138,7 @@ describe("solicitações de aprovação", () => {
     );
     const request = (versionId: string) =>
       errorOf(() =>
-        db.query(
-          "insert into public.approval_requests (material_id, version_id, client_id) values ($1,$2,$3)",
-          [m.materialId, versionId, IDS.clienteA],
-        ),
+        insertRequest(db, { materialId: m.materialId, versionId, clientId: IDS.clienteA }),
       );
     expect(await request(rows[0].id)).toMatch(/mais recente/);
     expect(await request(rows[1].id)).toMatch(/não possui arquivos/);
@@ -151,12 +148,16 @@ describe("solicitações de aprovação", () => {
     const m = await createMaterial(db, { clientId: IDS.clienteA, projectId: IDS.projetoA, sent: true });
     const { rows } = await db.query<{ status: string }>("select status from public.materials where id=$1", [m.materialId]);
     expect(rows[0].status).toBe("aguardando");
+    const { rows: sub } = await db.query<{ submission_id: string }>(
+      "select submission_id from public.approval_requests where id=$1",
+      [m.requestId],
+    );
+    // mesma rodada e mesmo aprovador: o índice único impede duas solicitações abertas
     const erro = await errorOf(() =>
-      db.query("insert into public.approval_requests (material_id, version_id, client_id) values ($1,$2,$3)", [
-        m.materialId,
-        m.versionId,
-        IDS.clienteA,
-      ]),
+      insertRequest(db, {
+        materialId: m.materialId, versionId: m.versionId, clientId: IDS.clienteA,
+        approverId: IDS.aprovadorA, submissionId: sub[0].submission_id,
+      }),
     );
     expect(erro).toMatch(/unique|duplicate/i);
   });

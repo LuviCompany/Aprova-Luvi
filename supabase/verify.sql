@@ -70,16 +70,28 @@ where n.nspname in ('public', 'app')
   and (n.nspname || '.' || p.proname) not in (
     'public.decide_as_approver', 'public.create_approval_link', 'public.revoke_approval_link',
     'public.cancel_approval_request', 'public.link_approver_to_client', 'public.prepare_approver_invite',
-    'public.revoke_approver_invite', 'public.reorder_version_files', 'public.start_material_revision', 'app.my_role', 'app.my_org', 'app.is_staff', 'app.is_admin',
+    'public.revoke_approver_invite', 'public.reorder_version_files', 'public.start_material_revision', 'public.submit_for_approval', 'app.my_role', 'app.my_org', 'app.is_staff', 'app.is_admin',
     'app.can_manage_clients', 'app.staff_can_access', 'app.my_client_ids', 'app.my_approver_id',
     'app.version_was_sent', 'app.material_was_sent', 'app.material_visible_project', 'app.try_uuid'
   );
 
--- CHECK: decide_via_link acessível a quem não é o servidor
-select 'decide_via_link executável por anon/authenticated' as problema
+-- CHECK: funções do fluxo por link (e a antiga decide_via_link) acessíveis a quem não é o servidor
+select p.proname || ' executável por anon/authenticated (ou decide_via_link ainda existe)' as problema
 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-where n.nspname = 'public' and p.proname = 'decide_via_link'
-  and (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('authenticated', p.oid, 'EXECUTE'));
+where n.nspname = 'public'
+  and (p.proname = 'decide_via_link'
+       or (p.proname in ('link_resolve', 'link_issue_code', 'link_verify_code', 'link_session_context', 'decide_with_link_session')
+           and (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('authenticated', p.oid, 'EXECUTE'))));
+
+-- CHECK: authenticated com INSERT direto em approval_requests (o envio é só por submit_for_approval)
+select 'approval_requests aceita INSERT direto de authenticated' as problema
+where has_table_privilege('authenticated', 'public.approval_requests', 'INSERT')
+   or has_any_column_privilege('authenticated', 'public.approval_requests', 'INSERT');
+
+-- CHECK: solicitação sem aprovador/rodada ou aberta duplicada por (versão, aprovador)
+select id from public.approval_requests where approver_id is null or submission_id is null
+union all
+select (array_agg(id))[1] from public.approval_requests where status = 'aberta' group by version_id, approver_id having count(*) > 1;
 
 -- CHECK: funções SECURITY DEFINER sem search_path vazio
 select n.nspname || '.' || p.proname as funcao

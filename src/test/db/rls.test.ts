@@ -6,6 +6,7 @@ import {
   createTestDb,
   errorOf,
   seedBase,
+  uid,
   type SentMaterial,
   type TestDb,
 } from "./harness";
@@ -21,6 +22,7 @@ beforeAll(async () => {
   await seedBase(db);
   await db.exec(`insert into public.projects (id, client_id, name)
     values ('00000000-0000-4000-8000-0000000000c0', '${IDS.clienteOutraOrg}', 'Projeto Outra Org')`);
+  await db.query(`insert into public.approvers (id, client_id, name, email) values ('${uid(95)}', '${IDS.clienteOutraOrg}', 'Aprovador Outra Org', 'x@outra.test')`);
   aSent = await createMaterial(db, { clientId: IDS.clienteA, projectId: IDS.projetoA, sent: true, title: "A enviado" });
   aDraft = await createMaterial(db, { clientId: IDS.clienteA, projectId: IDS.projetoA, title: "A rascunho" });
   bSent = await createMaterial(db, { clientId: IDS.clienteB, projectId: IDS.projetoB, sent: true, title: "B enviado" });
@@ -28,6 +30,7 @@ beforeAll(async () => {
     clientId: IDS.clienteOutraOrg,
     projectId: "00000000-0000-4000-8000-0000000000c0",
     sent: true,
+    approverId: uid(95),
     title: "Outra agência",
   });
 }, 180_000);
@@ -129,8 +132,8 @@ describe("isolamento entre clientes (portal)", () => {
         await ins("insert into public.materials (project_id, client_id, title, type, created_by) values ($1,$2,'novo','imagem',$3)", [IDS.projetoA, IDS.clienteA, IDS.userClienteA]),
       ).toMatch(/row-level security/);
       expect(
-        await ins("insert into public.approval_requests (material_id, version_id, client_id, requested_by) values ($1,$2,$3,$4)", [aSent.materialId, aSent.versionId, IDS.clienteA, IDS.userClienteA]),
-      ).toMatch(/row-level security/);
+        await ins("insert into public.approval_requests (material_id, version_id, client_id, requested_by, approver_id, submission_id) values ($1,$2,$3,$4,$5,$5)", [aSent.materialId, aSent.versionId, IDS.clienteA, IDS.userClienteA, IDS.aprovadorA]),
+      ).toMatch(/permission denied/);
       expect(
         await ins("insert into public.material_versions (material_id, client_id, created_by) values ($1,$2,$3)", [aSent.materialId, IDS.clienteA, IDS.userClienteA]),
       ).toMatch(/row-level security/);

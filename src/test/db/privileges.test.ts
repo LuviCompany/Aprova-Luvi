@@ -118,6 +118,7 @@ describe("funções", () => {
     "public.revoke_approver_invite",
     "public.reorder_version_files",
     "public.start_material_revision",
+    "public.submit_for_approval",
     "app.my_role",
     "app.my_org",
     "app.is_staff",
@@ -153,11 +154,21 @@ describe("funções", () => {
     expect(granted).toEqual(AUTHENTICATED_ALLOWED);
   });
 
-  it("decide_via_link e o núcleo de decisão são exclusivos do servidor", async () => {
+  it("o fluxo por link e o núcleo de decisão são exclusivos do servidor; decide_via_link não existe mais", async () => {
     const byName = Object.fromEntries((await functions()).map((f) => [f.name, f]));
-    expect(byName["public.decide_via_link"].auth).toBe(false);
-    expect(byName["public.decide_via_link"].anon).toBe(false);
-    expect(byName["public.decide_via_link"].service).toBe(true);
+    expect(byName["public.decide_via_link"]).toBeUndefined();
+    for (const name of [
+      "public.link_resolve",
+      "public.link_issue_code",
+      "public.link_verify_code",
+      "public.link_session_context",
+      "public.decide_with_link_session",
+    ]) {
+      expect(byName[name], name).toBeDefined();
+      expect(byName[name].auth, name).toBe(false);
+      expect(byName[name].anon, name).toBe(false);
+      expect(byName[name].service, name).toBe(true);
+    }
     expect(byName["app.record_decision"].auth).toBe(false);
     expect(byName["app.write_audit"].auth).toBe(false);
   });

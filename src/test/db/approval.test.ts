@@ -4,6 +4,10 @@ import {
   IDS,
   createMaterial,
   createTestDb,
+  insertRequest,
+  openLinkSession,
+  sessionHashOf,
+  uid,
   errorOf,
   seedBase,
   sha256Hex,
@@ -123,15 +127,23 @@ describe("aprovação autenticada (portal)", () => {
   });
 });
 
-describe("aprovação por link seguro", () => {
-  it("a equipe cria o link guardando só o hash; o servidor decide com o link validado", async () => {
-    const m = await sent();
+describe("aprovação por link seguro (código + sessão)", () => {
+  // O link pertence à solicitação individual do aprovador sem login (aprovadorALink).
+  const sentLink = () => createMaterial(db, { clientId: IDS.clienteA, projectId: IDS.projetoA, sent: true, approverId: IDS.aprovadorALink });
+  const decideLink = (tokenHash: string, sessionHash: string | null, decision: "aprovado" | "alteracao", note = "", ip = sha256Hex("ip")) =>
+    db.asService(() =>
+      db.query("select public.decide_with_link_session($1,$2,$3,$4,$5,$6)", [tokenHash, sessionHash, decision, note, ip, "Mozilla/5.0 teste"]),
+    );
+
+  it("a equipe cria o link guardando só o hash; o servidor decide com token + sessão verificada", async () => {
+    const m = await sentLink();
     const linkId = await createLink(m, "link-feliz");
 
     const stored = await db.query<{ token_hash: string }>("select token_hash from public.approval_links where id=$1", [linkId]);
     expect(stored.rows[0].token_hash).toBe(sha256Hex("link-feliz"));
 
-    await db.asService(() => db.query("select public.decide_via_link($1,'aprovado','', $2, $3)", [linkId, sha256Hex("ip"), "Mozilla/5.0 teste"]));
+    const { tokenHash, sessionHash } = await openLinkSession(db, "link-feliz");
+    await decideLink(tokenHash, sessionHash, "aprovado");
 
     expect(await statusOf(m.materialId)).toBe("aprovado");
     const d = await db.query<{ via: string; link_id: string; approver_id: string; ip_hash: string }>(
@@ -143,61 +155,111 @@ describe("aprovação por link seguro", () => {
     expect(link.rows[0].used_at).not.toBeNull();
   });
 
+  it("sem sessão verificada a decisão é recusada (o token sozinho não basta)", async () => {
+    const m = await sentLink();
+    await createLink(m, "sem-sessao");
+    const tokenHash = sha256Hex("sem-sessao");
+    expect(await errorOf(() => decideLink(tokenHash, null, "aprovado"))).toMatch(/sessão/);
+    expect(await errorOf(() => decideLink(tokenHash, sessionHashOf("outra"), "aprovado"))).toMatch(/sessão/);
+    expect(await statusOf(m.materialId)).toBe("aguardando");
+  });
+
+  it("a sessão de um link não vale para outro link", async () => {
+    const m1 = await sentLink();
+    const m2 = await sentLink();
+    await createLink(m1, "link-um");
+    await createLink(m2, "link-dois");
+    const um = await openLinkSession(db, "link-um");
+    expect(await errorOf(() => decideLink(sha256Hex("link-dois"), um.sessionHash, "aprovado"))).toMatch(/sessão/);
+    expect(await statusOf(m2.materialId)).toBe("aguardando");
+  });
+
   it("o link é de uso único", async () => {
-    const m = await sent();
-    const linkId = await createLink(m, "uso-unico");
-    await db.asService(() => db.query("select public.decide_via_link($1,'aprovado','')", [linkId]));
-    const erro = await db.asService(() => errorOf(() => db.query("select public.decide_via_link($1,'aprovado','')", [linkId])));
-    expect(erro).toMatch(/já utilizado/);
+    const m = await sentLink();
+    await createLink(m, "uso-unico");
+    const { tokenHash, sessionHash } = await openLinkSession(db, "uso-unico");
+    await decideLink(tokenHash, sessionHash, "aprovado");
+    expect(await errorOf(() => decideLink(tokenHash, sessionHash, "aprovado"))).toMatch(/link indisponível \(used\)/);
+  });
+
+  it("alteração por link exige descrição de 10+ caracteres e leva o material para ajustes", async () => {
+    const m = await sentLink();
+    await createLink(m, "pede-alteracao");
+    const { tokenHash, sessionHash } = await openLinkSession(db, "pede-alteracao");
+    expect(await errorOf(() => decideLink(tokenHash, sessionHash, "alteracao", "curto"))).toMatch(/check|note/i);
+    expect(await statusOf(m.materialId)).toBe("aguardando");
+    await decideLink(tokenHash, sessionHash, "alteracao", "Trocar a imagem do slide 2");
+    expect(await statusOf(m.materialId)).toBe("alteracao");
   });
 
   it("rejeita link expirado", async () => {
-    const m = await sent();
+    const m = await sentLink();
     const linkId = await createLink(m, "expirado");
+    const { tokenHash, sessionHash } = await openLinkSession(db, "expirado");
     await db.query(
       "update public.approval_links set created_at = now() - interval '10 days', expires_at = now() - interval '1 day' where id=$1",
       [linkId],
     );
-    const erro = await db.asService(() => errorOf(() => db.query("select public.decide_via_link($1,'aprovado','')", [linkId])));
-    expect(erro).toMatch(/expirado/);
+    expect(await errorOf(() => decideLink(tokenHash, sessionHash, "aprovado"))).toMatch(/expired/);
     expect(await statusOf(m.materialId)).toBe("aguardando");
   });
 
-  it("rejeita link revogado", async () => {
-    const m = await sent();
+  it("rejeita link revogado (inclusive com sessão já aberta)", async () => {
+    const m = await sentLink();
     const linkId = await createLink(m, "revogado");
+    const { tokenHash, sessionHash } = await openLinkSession(db, "revogado");
     await db.asUser(IDS.designer, () => db.query("select public.revoke_approval_link($1)", [linkId]));
-    const erro = await db.asService(() => errorOf(() => db.query("select public.decide_via_link($1,'aprovado','')", [linkId])));
-    expect(erro).toMatch(/revogado/);
+    expect(await errorOf(() => decideLink(tokenHash, sessionHash, "aprovado"))).toMatch(/revoked/);
+    const ctx = await db.asService(() => db.query<{ r: { status: string } }>("select public.link_session_context($1,$2) as r", [tokenHash, sessionHash]));
+    expect(ctx.rows[0].r.status).toBe("revoked");
   });
 
-  it("usuários do app não podem chamar decide_via_link (só o servidor)", async () => {
-    const m = await sent();
-    const linkId = await createLink(m, "so-servidor");
-    for (const user of [IDS.designer, IDS.userClienteA, IDS.admin]) {
-      const erro = await db.asUser(user, () => errorOf(() => db.query("select public.decide_via_link($1,'aprovado','')", [linkId])));
-      expect(erro).toMatch(/permission denied/);
+  it("sessão expirada não decide", async () => {
+    const m = await sentLink();
+    await createLink(m, "sessao-velha");
+    const { tokenHash, sessionHash } = await openLinkSession(db, "sessao-velha");
+    await db.query("update public.approval_link_sessions set expires_at = now() - interval '1 second'");
+    expect(await errorOf(() => decideLink(tokenHash, sessionHash, "aprovado"))).toMatch(/sessão/);
+  });
+
+  it("usuários do app (e o anônimo) não chamam nenhuma função do fluxo por link; decide_via_link não existe", async () => {
+    const m = await sentLink();
+    await createLink(m, "so-servidor");
+    const calls = [
+      "select public.link_resolve($1)",
+      "select public.link_issue_code($1, $1)",
+      "select public.link_verify_code($1, $1, $1)",
+      "select public.link_session_context($1, $1)",
+      "select public.decide_with_link_session($1, $1, 'aprovado')",
+    ];
+    for (const sql of calls) {
+      for (const user of [IDS.designer, IDS.userClienteA, IDS.admin]) {
+        expect(await db.asUser(user, () => errorOf(() => db.query(sql, [sha256Hex("so-servidor")]))), sql).toMatch(/permission denied/);
+      }
+      expect(await db.asAnon(() => errorOf(() => db.query(sql, [sha256Hex("so-servidor")]))), sql).toMatch(/permission denied/);
     }
-    expect(await db.asAnon(() => errorOf(() => db.query("select public.decide_via_link($1,'aprovado','')", [linkId])))).toMatch(/permission denied/);
+    expect(await db.asService(() => errorOf(() => db.query("select public.decide_via_link($1,'aprovado','')", [uid(1)])))).toMatch(/does not exist/);
   });
 
-  it("recusa link cuja solicitação já foi decidida pelo portal", async () => {
+  it("recusa link cuja solicitação já foi decidida pelo portal (sincronia portal/link)", async () => {
     const m = await sent();
-    const linkId = await createLink(m, "portal-primeiro", IDS.aprovadorA);
+    await createLink(m, "portal-primeiro", IDS.aprovadorA);
+    const { tokenHash, sessionHash } = await openLinkSession(db, "portal-primeiro");
     await decide(IDS.userClienteA, m, "aprovado");
-    const erro = await db.asService(() => errorOf(() => db.query("select public.decide_via_link($1,'alteracao','quero mudar tudo agora')", [linkId])));
-    expect(erro).toMatch(/encerrada/);
+    expect(await errorOf(() => decideLink(tokenHash, sessionHash, "alteracao", "quero mudar tudo agora"))).toMatch(/closed/);
+    const status = await db.asService(() => db.query<{ r: { status: string } }>("select public.link_resolve($1) as r", [tokenHash]));
+    expect(status.rows[0].r.status).toBe("closed");
   });
 
   it("validade máxima de 30 dias e mínimo no futuro", async () => {
-    const m = await sent();
+    const m = await sentLink();
     expect(await errorOf(() => createLink(m, "longo", IDS.aprovadorALink, 31))).toMatch(/30 dias/);
     expect(await errorOf(() => createLink(m, "passado", IDS.aprovadorALink, -1))).toMatch(/30 dias/);
     expect(await errorOf(() => createLink(m, "no-limite", IDS.aprovadorALink, 30))).toBeNull();
   });
 
-  it("só a equipe da mesma agência cria link, e só com aprovador do próprio cliente", async () => {
-    const m = await sent();
+  it("só a equipe da mesma agência cria link, e só para o aprovador DA solicitação", async () => {
+    const m = await sentLink();
     const create = (user: string, approver: string, seed: string) =>
       db.asUser(user, () =>
         errorOf(() =>
@@ -207,13 +269,24 @@ describe("aprovação por link seguro", () => {
     expect(await create(IDS.userClienteA, IDS.aprovadorALink, "c1")).toMatch(/sem permissão/);
     expect(await create(IDS.staffOutraOrg, IDS.aprovadorALink, "c2")).toMatch(/sem permissão/);
     expect(await create(IDS.designer, IDS.aprovadorB, "c3")).toMatch(/aprovador inválido/);
+    expect(await create(IDS.designer, IDS.aprovadorA, "c3b")).toMatch(/aprovador inválido/); // outro aprovador do mesmo cliente
     expect(await create(IDS.designer, IDS.aprovadorALink, "c4")).toBeNull();
   });
 
+  it("reemitir o link revoga o anterior (só um link ativo por solicitação)", async () => {
+    const m = await sentLink();
+    const antigo = await createLink(m, "antigo");
+    const novo = await createLink(m, "novo");
+    const rows = await db.query<{ id: string; revoked_at: string | null }>("select id, revoked_at from public.approval_links where request_id=$1", [m.requestId]);
+    expect(rows.rows.find((r) => r.id === antigo)?.revoked_at).not.toBeNull();
+    expect(rows.rows.find((r) => r.id === novo)?.revoked_at).toBeNull();
+  });
+
   it("o hash do token é único e tem formato validado", async () => {
-    const m = await sent();
+    const m = await sentLink();
+    const m2 = await sentLink();
     await createLink(m, "duplicado");
-    expect(await errorOf(() => createLink(m, "duplicado"))).toMatch(/unique|duplicate/i);
+    expect(await errorOf(() => createLink(m2, "duplicado"))).toMatch(/unique|duplicate/i);
     const erro = await db.asUser(IDS.designer, () =>
       errorOf(() => db.query("select public.create_approval_link($1,$2,'token-em-texto-puro', now() + interval '1 day')", [m.requestId, IDS.aprovadorALink])),
     );
@@ -221,7 +294,7 @@ describe("aprovação por link seguro", () => {
   });
 
   it("outra agência não revoga links alheios", async () => {
-    const m = await sent();
+    const m = await sentLink();
     const linkId = await createLink(m, "alheio");
     const erro = await db.asUser(IDS.staffOutraOrg, () => errorOf(() => db.query("select public.revoke_approval_link($1)", [linkId])));
     expect(erro).toMatch(/sem permissão/);
@@ -230,15 +303,16 @@ describe("aprovação por link seguro", () => {
 
 describe("cancelamento e ciclo de versões", () => {
   it("cancelar a solicitação devolve o material a rascunho e revoga os links", async () => {
-    const m = await sent();
+    const m = await createMaterial(db, { clientId: IDS.clienteA, projectId: IDS.projetoA, sent: true, approverId: IDS.aprovadorALink });
     const linkId = await createLink(m, "para-cancelar");
+    const sessao = await openLinkSession(db, "para-cancelar");
     await db.asUser(IDS.designer, () => db.query("select public.cancel_approval_request($1)", [m.requestId]));
 
     expect(await statusOf(m.materialId)).toBe("rascunho");
     const link = await db.query<{ revoked_at: string | null }>("select revoked_at from public.approval_links where id=$1", [linkId]);
     expect(link.rows[0].revoked_at).not.toBeNull();
-    const erro = await db.asService(() => errorOf(() => db.query("select public.decide_via_link($1,'aprovado','')", [linkId])));
-    expect(erro).toMatch(/revogado/);
+    const erro = await db.asService(() => errorOf(() => db.query("select public.decide_with_link_session($1,$2,'aprovado')", [sessao.tokenHash, sessao.sessionHash])));
+    expect(erro).toMatch(/revoked/);
   });
 
   it("clientes não cancelam solicitações", async () => {
@@ -266,12 +340,7 @@ describe("cancelamento e ciclo de versões", () => {
         [versionId, m.materialId, IDS.clienteA, `${IDS.clienteA}/${m.materialId}/${versionId}/v2.png`, IDS.designer],
       );
       expect(await statusOf(m.materialId)).toBe("rascunho"); // não visível como pendente ainda
-      await db.query("insert into public.approval_requests (material_id, version_id, client_id, requested_by) values ($1,$2,$3,$4)", [
-        m.materialId,
-        versionId,
-        IDS.clienteA,
-        IDS.designer,
-      ]);
+      await db.query("select public.submit_for_approval($1, array[$2]::uuid[])", [versionId, IDS.aprovadorA]);
     });
     expect(await statusOf(m.materialId)).toBe("aguardando");
 
@@ -318,14 +387,15 @@ describe("cliente arquivado (active = false)", () => {
   });
 
   it("nem por link já emitido: o núcleo da decisão revalida o cliente", async () => {
-    const m = await sent();
-    const linkId = await createLink(m, "cliente-arquivado");
+    const m = await createMaterial(db, { clientId: IDS.clienteA, projectId: IDS.projetoA, sent: true, approverId: IDS.aprovadorALink });
+    await createLink(m, "cliente-arquivado");
+    const { tokenHash, sessionHash } = await openLinkSession(db, "cliente-arquivado");
     await setClientActive(false);
     try {
       const erro = await db.asService(() =>
-        errorOf(() => db.query("select public.decide_via_link($1,'aprovado','')", [linkId])),
+        errorOf(() => db.query("select public.decide_with_link_session($1,$2,'aprovado')", [tokenHash, sessionHash])),
       );
-      expect(erro).toMatch(/não autorizado/);
+      expect(erro).toMatch(/link indisponível \(closed\)/);
     } finally {
       await setClientActive(true);
     }
