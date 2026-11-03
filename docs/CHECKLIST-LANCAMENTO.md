@@ -46,7 +46,7 @@ Estado em **2026-11-02**, ao fim da validação da Fase 2 (Módulos 1 e 2). Lege
 | 15 | Auditoria (`audit_events`) de criar, editar e arquivar clientes e projetos | Antes do lançamento / Fase 4 |
 | 16 | Cadastro de aprovadores na interface (a RLS já permite): pré-requisito do Módulo 4 | Início do Módulo 4 |
 
-Detalhes e testes pendentes (`it.todo`): `docs/MODULO-3.md`.
+**Atualização (A.2):** os itens 13, 14 e 15 e o 16 estão **implementados localmente** nas migrations M1 a M4 (`docs/MIGRACOES-A2.md`) e no app, **mas ainda não aplicados** no Supabase; ficam pendentes de aplicação autorizada e de `verify.sql` com os 22 blocos em 0. A política de retenção da auditoria é uma **proposta** a validar com a assessoria jurídica (`docs/AUDITORIA.md`).
 
 ## C. E-mail e domínio
 

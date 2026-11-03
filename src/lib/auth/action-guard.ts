@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { MESSAGES } from "@/lib/auth/errors";
 import { canManageClients, isStaffRole } from "@/lib/auth/roles";
+import { DENIED } from "@/lib/clients/errors";
 import { getSessionState, type SessionUser } from "@/lib/auth/session";
 import { isDemoMode, isSupabaseConfigured } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -10,7 +11,6 @@ export type GuardResult =
   | { ok: true; user: SessionUser; supabase: SupabaseClient }
   | { ok: false; error: string };
 
-export const DENIED = "Você não tem permissão para esta ação.";
 
 /**
  * Autoriza uma Server Action do painel NO SERVIDOR: a sessão é conferida de novo a cada chamada

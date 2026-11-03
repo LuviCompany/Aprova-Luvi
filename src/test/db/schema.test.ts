@@ -7,7 +7,7 @@ let db: TestDb;
 beforeAll(async () => {
   db = await createTestDb();
   await seedBase(db);
-}, 60_000);
+}, 180_000);
 
 afterAll(async () => {
   await db.close();

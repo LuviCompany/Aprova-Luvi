@@ -27,6 +27,8 @@ Três ambientes:
 
 **Módulo 3 (Gestão de Materiais), em andamento por etapas — plano e acompanhamento em `docs/MODULO-3.md`:** a **etapa A (clientes e projetos) está concluída**: `/admin/clientes` e `/admin/projetos` leem e gravam no banco real (cadastro, edição, arquivamento, filtros). As etapas B a F (materiais, upload, carrosséis e versões, dashboard real, testes) **não foram iniciadas** e só começam com autorização expressa, uma por vez.
 
+**Etapa A.2 (aprovadores) implementada localmente, com as migrations `20261103120000` a `20261103120300` CRIADAS E TESTADAS, mas NÃO APLICADAS em nenhum projeto Supabase** (só com autorização expressa, uma por vez: `docs/MIGRACOES-A2.md`; auditoria e retenção: `docs/AUDITORIA.md`). O portal agora exige **escolha explícita de empresa** quando o aprovador tem mais de um vínculo ativo (nunca "o primeiro").
+
 **Módulo 4** (solicitações, aprovação no portal, link seguro com código, comentários, decisões reais) **não iniciado**. Enquanto isso, o dashboard, os materiais, o histórico, os usuários e o portal **ainda leem `src/lib/mock/`**: essas telas mostram o aviso de dados de demonstração (`MockDataNotice`) fora do modo demonstração. Fora do modo demonstração, `/aprovar/[token]` responde sempre "link inválido".
 
 **Pendências conhecidas (detalhes em `docs/CHECKLIST-LANCAMENTO.md`):** recuperação de senha por e-mail **ainda não testada** (precisa de SMTP próprio com o Resend: `docs/EMAIL-RESEND.md`); timeouts de conexão do ambiente de desenvolvimento são da **rede local** (`docs/DIAGNOSTICO-REDE.md`, `npm run net:check`); não existe projeto Supabase de produção; a `main` (demonstração publicada) tem o defeito do menu do usuário já corrigido na `fase-2`.
@@ -91,6 +93,8 @@ src/lib/mock/       dados fictícios (modo demonstração; serão substituídos 
 src/lib/env.ts      leitura central de variáveis, isDemoMode()
 src/lib/auth/       roles, safeNextPath, senha, erros (puros), session.ts (DAL: requireStaff/requireClientUser) e action-guard.ts (autorização das Server Actions)
 src/lib/clients/    clientes e projetos (Módulo 3): schema/validação, consultas sob RLS, adaptador da demonstração
+src/lib/approvers/  aprovadores (A.2): validação, agrupamento por pessoa, detalhe do cliente
+src/lib/auth/portal-selection.ts  regra pura da escolha de empresa no portal (pickPortalContext)
 src/components/clients/  formulários em janela, cartões e filtros de clientes/projetos
 src/lib/supabase/   server.ts (usuário, RLS), admin.ts (service_role, só servidor), proxy.ts (renovação de sessão)
 src/proxy.ts        primeira barreira: anônimo em /admin, /portal, /redefinir-senha vai ao /login
@@ -102,7 +106,9 @@ docs/VALIDACAO-FASE-2.md     registro da validação (testes manuais do usuário
 docs/DIAGNOSTICO-REDE.md     timeouts de conexão: evidências, causa (rede local) e o que fazer
 docs/EMAIL-RESEND.md         recuperação de senha e SMTP com o Resend: o que falta
 docs/CHECKLIST-LANCAMENTO.md checklist de segurança e lançamento
-docs/MODULO-3.md            plano por etapas (A–F), critérios de aceite, lacunas de banco e teste manual do Módulo 3
+docs/MODULO-3.md            plano por etapas (A–F), critérios de aceite, resultado da A.2 e teste manual do Módulo 3
+docs/MIGRACOES-A2.md        migrations da A.2: conteúdo, hashes, riscos, procedimento seguro e rollback
+docs/AUDITORIA.md           o que a auditoria grava (sem dados pessoais) e a política de retenção proposta
 e2e/                testes Playwright
 public/brand/       logo e favicon copiados do site institucional
 ```

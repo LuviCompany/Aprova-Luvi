@@ -83,6 +83,18 @@ test.describe("clientes e projetos (demonstração, somente leitura)", () => {
     await expect(page.getByRole("heading", { name: "Campanha Black Friday" })).toBeVisible();
   });
 
+  test("detalhe do cliente: aprovadores e projetos, sem botões de escrita", async ({ page }) => {
+    await page.goto("/admin/clientes");
+    await page.getByRole("link", { name: "Casa Aurora Móveis" }).first().click();
+    await expect(page).toHaveURL(/\/admin\/clientes\/c1$/);
+    await expect(page.getByRole("heading", { name: "Casa Aurora Móveis", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Marina Prado", level: 3 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Campanha Black Friday" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Novo|Editar|Desativar|Vincular|convite|Arquivar/i })).toHaveCount(0);
+    await page.goto("/admin/clientes/inexistente");
+    await expect(page.getByRole("heading", { name: "Página não encontrada" })).toBeVisible();
+  });
+
   test("parâmetros inválidos na URL não quebram a página", async ({ page }) => {
     await page.goto("/admin/projetos?status=%27%3B%20drop%20table&cliente=1%20or%201%3D1&q=%25");
     await expect(page.getByRole("heading", { name: "Projetos", level: 1 })).toBeVisible();
@@ -138,7 +150,7 @@ test.describe("aprovação rápida por link", () => {
 });
 
 test("não há overflow horizontal nas telas principais", async ({ page }) => {
-  for (const path of ["/login", "/admin", "/admin/clientes", "/admin/projetos", "/admin/materiais/m1", "/portal", "/aprovar/demo"]) {
+  for (const path of ["/login", "/admin", "/admin/clientes", "/admin/clientes/c1", "/admin/projetos", "/admin/materiais/m1", "/portal", "/aprovar/demo"]) {
     await page.goto(path);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

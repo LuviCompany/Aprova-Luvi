@@ -10,6 +10,9 @@ const auth = {
 };
 vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () => ({ auth }) }));
 
+const cookieDelete = vi.fn();
+vi.mock("next/headers", () => ({ cookies: async () => ({ delete: cookieDelete }) }));
+
 const getSessionState = vi.fn();
 vi.mock("@/lib/auth/session", () => ({ getSessionState: () => getSessionState() }));
 
@@ -132,6 +135,11 @@ describe("signOutAction", () => {
   it("encerra a sessão no servidor e volta ao login", async () => {
     expect(await redirectOf(signOutAction())).toBe("/login");
     expect(auth.signOut).toHaveBeenCalled();
+  });
+
+  it("limpa a empresa escolhida no portal (preferência da sessão)", async () => {
+    await redirectOf(signOutAction());
+    expect(cookieDelete).toHaveBeenCalledWith({ name: "aprova_portal_cliente", path: "/portal" });
   });
 });
 

@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
  */
 
 test.describe("proteção de rotas", () => {
-  for (const path of ["/admin", "/admin/clientes", "/admin/projetos", "/admin/materiais", "/admin/materiais/m1", "/admin/usuarios", "/portal", "/portal/materiais/m1", "/portal/historico"]) {
+  for (const path of ["/admin", "/admin/clientes", "/admin/clientes/c1", "/admin/projetos", "/admin/materiais", "/admin/materiais/m1", "/admin/usuarios", "/portal", "/portal/materiais/m1", "/portal/historico"]) {
     test(`anônimo em ${path} é enviado ao login, com o destino guardado`, async ({ page }) => {
       await page.goto(path);
       await expect(page).toHaveURL(/\/login\?next=/);

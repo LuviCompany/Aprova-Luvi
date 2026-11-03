@@ -25,10 +25,12 @@ interface ProjectFormDialogProps {
   mode: "create" | "edit";
   /** Clientes ATIVOS, para o cadastro (o cliente de um projeto não muda depois). */
   clients?: Array<{ id: string; name: string }>;
+  /** Cliente já escolhido (ex.: criado a partir da tela do cliente). */
+  defaultClientId?: string;
   project?: EditableProject;
 }
 
-export function ProjectFormDialog({ mode, clients = [], project }: ProjectFormDialogProps) {
+export function ProjectFormDialog({ mode, clients = [], defaultClientId, project }: ProjectFormDialogProps) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -43,14 +45,14 @@ export function ProjectFormDialog({ mode, clients = [], project }: ProjectFormDi
       )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <ProjectForm mode={mode} clients={clients} project={project} onDone={() => setOpen(false)} />
+          <ProjectForm mode={mode} clients={clients} defaultClientId={defaultClientId} project={project} onDone={() => setOpen(false)} />
         </DialogContent>
       </Dialog>
     </>
   );
 }
 
-function ProjectForm({ mode, clients, project, onDone }: ProjectFormDialogProps & { onDone: () => void }) {
+function ProjectForm({ mode, clients, defaultClientId, project, onDone }: ProjectFormDialogProps & { onDone: () => void }) {
   const id = useId();
   const [state, formAction, pending] = useActionState<ProjectFormState, FormData>(async (prev, formData) => {
     const result = await saveProjectAction(prev, formData);
@@ -86,7 +88,7 @@ function ProjectForm({ mode, clients, project, onDone }: ProjectFormDialogProps 
             name="clientId"
             required
             disabled={noClients}
-            defaultValue=""
+            defaultValue={defaultClientId ?? ""}
             aria-invalid={!!errors.clientId}
             aria-describedby={describedBy(`${id}-client`, clientHint, errors.clientId)}
           >

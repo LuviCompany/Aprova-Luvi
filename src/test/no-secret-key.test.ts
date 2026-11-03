@@ -13,9 +13,15 @@ import { describe, expect, it } from "vitest";
 const ROOT = process.cwd();
 const AREAS = [
   "src/app/admin",
+  "src/app/portal",
   "src/components/clients",
+  "src/components/approvers",
+  "src/components/portal",
   "src/lib/clients",
+  "src/lib/approvers",
   "src/lib/auth/action-guard.ts",
+  "src/lib/auth/portal-context.ts",
+  "src/lib/auth/portal-selection.ts",
 ];
 const FORBIDDEN = [/supabase\/admin/, /createSupabaseAdminClient/, /requireSecretKey/, /SUPABASE_SECRET_KEY/, /service_role/];
 

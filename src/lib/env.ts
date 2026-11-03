@@ -86,6 +86,11 @@ export function isSupabaseConfigured(env: NodeJS.ProcessEnv = process.env): bool
  * ausência de configuração do Supabase. Configurar o Supabase desliga a demonstração
  * automaticamente, então o login fictício nunca convive com usuários reais.
  */
+/** Produção de verdade (`next start`/Vercel): usado para marcar cookies como `Secure`. */
+export function isProductionEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.NODE_ENV === "production";
+}
+
 export function isDemoMode(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.APROVA_DEMO_MODE === "true" && !isSupabaseConfigured(env);
 }

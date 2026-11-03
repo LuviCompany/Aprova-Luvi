@@ -14,5 +14,9 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,
+    // Janelas (Base UI) e Postgres em memória ficam mais lentos com a suíte inteira em paralelo.
+    testTimeout: 20_000,
+    // Cada arquivo de banco aplica as migrations (8 hoje) num Postgres em memória; com a suíte inteira em paralelo, 60 s não bastava.
+    hookTimeout: 180_000,
   },
 });

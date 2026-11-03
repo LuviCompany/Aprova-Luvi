@@ -18,6 +18,7 @@ const DUPLICATE = "Já existe um cliente com esse nome.";
 
 function refresh() {
   revalidatePath("/admin/clientes");
+  revalidatePath("/admin/clientes/[id]", "page");
   revalidatePath("/admin/projetos");
 }
 

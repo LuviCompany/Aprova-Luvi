@@ -30,7 +30,7 @@ beforeAll(async () => {
     sent: true,
     title: "Outra agência",
   });
-}, 60_000);
+}, 180_000);
 
 afterAll(async () => {
   await db.close();

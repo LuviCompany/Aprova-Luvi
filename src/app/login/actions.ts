@@ -1,8 +1,10 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { classifyAuthError, MESSAGES } from "@/lib/auth/errors";
+import { PORTAL_CLIENT_COOKIE } from "@/lib/auth/portal-cookie";
 import { safeNextPath } from "@/lib/auth/redirect";
 import { canAccessPath, homeForRole } from "@/lib/auth/roles";
 import { getSessionState } from "@/lib/auth/session";
@@ -51,6 +53,8 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
 }
 
 export async function signOutAction(): Promise<void> {
+  // A empresa escolhida no portal é preferência da sessão: sai junto com ela.
+  (await cookies()).delete({ name: PORTAL_CLIENT_COOKIE, path: "/portal" });
   if (isSupabaseConfigured()) {
     const supabase = await createSupabaseServerClient();
     await supabase.auth.signOut();

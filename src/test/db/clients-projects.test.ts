@@ -13,7 +13,7 @@ let db: TestDb;
 beforeAll(async () => {
   db = await createTestDb();
   await seedBase(db);
-}, 60_000);
+}, 180_000);
 
 afterAll(async () => {
   await db.close();
@@ -215,8 +215,5 @@ describe("projetos por papel", () => {
   });
 });
 
-describe("lacunas conhecidas (tratadas no app; endurecimento de banco proposto, sem migration aplicada)", () => {
-  it.todo("o banco deve recusar projeto novo em cliente arquivado (hoje só a Server Action recusa)");
-  it.todo("o banco deve tratar 'Casa Aurora' e 'casa aurora' como o mesmo cliente (índice único em lower(btrim(name)))");
-  it.todo("criar/editar/arquivar cliente e projeto deve gerar audit_events (hoje só versões, arquivos e solicitações auditam)");
-});
+// As três lacunas antigas (projeto em cliente arquivado, nome sem diferenciar caixa e auditoria) foram
+// fechadas pelas migrations da etapa A.2 e são testadas em src/test/db/approvers-a2.test.ts.

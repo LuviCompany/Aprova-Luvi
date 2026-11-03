@@ -31,7 +31,7 @@ beforeAll(async () => {
   populated = await createTestDb();
   await seedBase(populated);
   await createMaterial(populated, { clientId: IDS.clienteA, projectId: IDS.projetoA }); // cria também um arquivo no Storage
-}, 60_000);
+}, 180_000);
 
 afterAll(async () => {
   await empty.close();

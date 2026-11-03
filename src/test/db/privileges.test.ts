@@ -13,7 +13,7 @@ let db: TestDb;
 beforeAll(async () => {
   db = await createTestDb();
   await seedBase(db);
-}, 60_000);
+}, 180_000);
 
 afterAll(async () => {
   await db.close();
@@ -81,6 +81,12 @@ describe("tabelas", () => {
     expect(await hasColumn("authenticated", "comments", "author_name", "INSERT")).toBe(false);
   });
 
+  it("convites de aprovador: o app só lê; criar e revogar passam pelas funções", async () => {
+    expect(await hasTable("authenticated", "approver_invites", "SELECT")).toBe(true);
+    expect(await hasAnyColumn("authenticated", "approver_invites", "INSERT,UPDATE")).toBe(false);
+    expect(await hasTable("authenticated", "approver_invites", "DELETE")).toBe(false);
+  });
+
   it("o servidor (service_role) mantém acesso total", async () => {
     for (const t of await tables()) {
       expect(await hasTable("service_role", t, "SELECT,INSERT,UPDATE"), t).toBe(true);
@@ -94,6 +100,9 @@ describe("funções", () => {
     "public.create_approval_link",
     "public.revoke_approval_link",
     "public.cancel_approval_request",
+    "public.link_approver_to_client",
+    "public.prepare_approver_invite",
+    "public.revoke_approver_invite",
     "app.my_role",
     "app.my_org",
     "app.is_staff",
@@ -136,6 +145,31 @@ describe("funções", () => {
     expect(byName["public.decide_via_link"].service).toBe(true);
     expect(byName["app.record_decision"].auth).toBe(false);
     expect(byName["app.write_audit"].auth).toBe(false);
+  });
+
+  it("gatilhos novos da A.2 (guarda de cliente arquivado, auditoria, revogações) não são chamáveis pelo app", async () => {
+    const byName = Object.fromEntries((await functions()).map((f) => [f.name, f]));
+    for (const name of [
+      "app.guard_active_client",
+      "app.audit_row_change",
+      "app.approvers_after_deactivate",
+      "app.approvers_revoke_open_invites",
+    ]) {
+      expect(byName[name], name).toBeDefined();
+      expect(byName[name].auth, name).toBe(false);
+      expect(byName[name].anon, name).toBe(false);
+      expect(byName[name].secdef, name).toBe(true);
+      expect(byName[name].config?.join(","), name).toMatch(/search_path=""/);
+    }
+  });
+
+  it("as RPCs de vínculo e de convite são do app autenticado, nunca do anônimo", async () => {
+    const byName = Object.fromEntries((await functions()).map((f) => [f.name, f]));
+    for (const name of ["public.link_approver_to_client", "public.prepare_approver_invite", "public.revoke_approver_invite"]) {
+      expect(byName[name].anon, name).toBe(false);
+      expect(byName[name].auth, name).toBe(true);
+      expect(byName[name].secdef, name).toBe(true);
+    }
   });
 
   it("toda função SECURITY DEFINER fixa search_path vazio (sem sequestro por schema)", async () => {

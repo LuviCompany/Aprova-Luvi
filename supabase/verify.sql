@@ -69,7 +69,8 @@ where n.nspname in ('public', 'app')
   and has_function_privilege('authenticated', p.oid, 'EXECUTE')
   and (n.nspname || '.' || p.proname) not in (
     'public.decide_as_approver', 'public.create_approval_link', 'public.revoke_approval_link',
-    'public.cancel_approval_request', 'app.my_role', 'app.my_org', 'app.is_staff', 'app.is_admin',
+    'public.cancel_approval_request', 'public.link_approver_to_client', 'public.prepare_approver_invite',
+    'public.revoke_approver_invite', 'app.my_role', 'app.my_org', 'app.is_staff', 'app.is_admin',
     'app.can_manage_clients', 'app.staff_can_access', 'app.my_client_ids', 'app.my_approver_id',
     'app.version_was_sent', 'app.material_was_sent', 'app.material_visible_project', 'app.try_uuid'
   );
@@ -91,7 +92,8 @@ select tablename, policyname, roles
 from pg_policies
 where schemaname in ('public', 'storage') and tablename in (
     'organizations', 'profiles', 'clients', 'approvers', 'projects', 'materials', 'material_versions',
-    'material_files', 'approval_requests', 'approval_links', 'comments', 'decisions', 'audit_events', 'objects'
+    'material_files', 'approval_requests', 'approval_links', 'comments', 'decisions', 'audit_events', 'objects',
+    'approver_invites'
   )
   and roles::text <> '{authenticated}';
 
@@ -119,3 +121,45 @@ where schemaname = 'storage' and tablename = 'objects' and cmd in ('UPDATE', 'AL
 select p.id
 from public.profiles p left join auth.users u on u.id = p.id
 where u.id is null;
+
+-- ---------------------------------------------------------------------------
+-- Módulo 3, etapa A.2 (migrations 20261103120000 a 20261103120300). Estes blocos só passam DEPOIS
+-- de aplicar as quatro migrations da A.2; antes delas, os blocos "ausente" devolvem linhas.
+-- ---------------------------------------------------------------------------
+
+-- CHECK: convites de aprovador graváveis diretamente pelo app (só as funções gravam)
+select 'approver_invites aceita escrita direta do app' as problema
+where has_any_column_privilege('authenticated', 'public.approver_invites', 'INSERT,UPDATE')
+   or has_table_privilege('authenticated', 'public.approver_invites', 'DELETE')
+   or has_any_column_privilege('anon', 'public.approver_invites', 'SELECT,INSERT,UPDATE');
+
+-- CHECK: gatilhos de auditoria ausentes (clientes, projetos, aprovadores, convites)
+select t.tabela
+from (values ('clients'), ('projects'), ('approvers'), ('approver_invites')) as t(tabela)
+where not exists (
+  select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
+  where c.relname = t.tabela and g.tgname = t.tabela || '_audit_row' and not g.tgisinternal
+);
+
+-- CHECK: guarda de cliente arquivado ausente (projetos e aprovadores)
+select t.tabela
+from (values ('projects'), ('approvers')) as t(tabela)
+where not exists (
+  select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
+  where c.relname = t.tabela and g.tgname = t.tabela || '_guard_active_client' and not g.tgisinternal
+);
+
+-- CHECK: índice único do nome do cliente (sem diferenciar caixa) ausente
+select 'clients_org_name_ci_key ausente' as problema
+where not exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'clients_org_name_ci_key');
+
+-- CHECK: login por cliente (unique profile_id, client_id) ausente, ou unique antigo de profile_id ainda presente
+select 'approvers_profile_client_key ausente' as problema
+where not exists (select 1 from pg_constraint where conname = 'approvers_profile_client_key')
+union all select 'approvers_profile_id_key ainda existe'
+where exists (select 1 from pg_constraint where conname = 'approvers_profile_id_key');
+
+-- CHECK: eventos de auditoria com nome, e-mail ou texto livre no metadata (só ids, papel e colunas)
+select id, action
+from public.audit_events
+where metadata ?| array['name', 'email', 'full_name', 'job_title', 'note', 'body', 'title'];

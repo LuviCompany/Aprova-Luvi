@@ -17,6 +17,7 @@ const text = (formData: FormData, key: string) => String(formData.get(key) ?? ""
 function refresh() {
   revalidatePath("/admin/projetos");
   revalidatePath("/admin/clientes");
+  revalidatePath("/admin/clientes/[id]", "page");
 }
 
 /**

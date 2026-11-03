@@ -6,6 +6,7 @@ import { Suspense, type ReactNode } from "react";
 import { Bell } from "lucide-react";
 import { SignOutMenuItem } from "@/components/auth/sign-out-item";
 import { Logo } from "@/components/brand/logo";
+import { CompanySwitcher } from "@/components/portal/company-switcher";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { PortalLink } from "@/lib/auth/portal-selection";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -28,6 +30,9 @@ interface PortalShellProps {
   clientName: string;
   approverName: string;
   approverEmail: string;
+  /** Vínculos ativos do usuário. Com mais de um, o cabeçalho oferece a troca de empresa. */
+  companies?: PortalLink[];
+  activeClientId?: string;
   children: ReactNode;
 }
 
@@ -78,7 +83,14 @@ function PortalNav({ variant }: { variant: "desktop" | "mobile" }) {
   );
 }
 
-export function PortalShell({ clientName, approverName, approverEmail, children }: PortalShellProps) {
+export function PortalShell({
+  clientName,
+  approverName,
+  approverEmail,
+  companies,
+  activeClientId,
+  children,
+}: PortalShellProps) {
   const initials = approverName
     .split(" ")
     .map((p) => p[0])
@@ -99,6 +111,9 @@ export function PortalShell({ clientName, approverName, approverEmail, children 
             <PortalNav variant="desktop" />
           </Suspense>
           <div className="ml-auto flex items-center gap-2">
+            {companies && companies.length > 1 && activeClientId && (
+              <CompanySwitcher links={companies} activeClientId={activeClientId} />
+            )}
             <Button variant="ghost" size="icon" aria-label="Notificações">
               <Bell />
             </Button>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ArchiveClientButton } from "@/components/clients/archive-client-button";
 import { ClientFormDialog } from "@/components/clients/client-form-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -23,7 +24,11 @@ export function ClientCard({ client, canManage }: ClientCardProps) {
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
-            <h2 className="truncate font-heading text-lg font-bold text-white">{client.name}</h2>
+            <h2 className="truncate font-heading text-lg font-bold text-white">
+              <Link href={`/admin/clientes/${client.id}`} className="hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+                {client.name}
+              </Link>
+            </h2>
             <p className="truncate text-sm text-muted-foreground">{client.segment || "Segmento não informado"}</p>
           </div>
           {!client.active && <Badge variant="secondary">Arquivado</Badge>}
@@ -56,15 +61,23 @@ export function ClientCard({ client, canManage }: ClientCardProps) {
             </ul>
           )}
         </div>
-        {canManage && (
-          <div className="flex flex-wrap justify-end gap-2 border-t border-white/10 pt-3">
-            <ClientFormDialog
-              mode="edit"
-              client={{ id: client.id, name: client.name, segment: client.segment, initials: client.initials }}
-            />
-            <ArchiveClientButton id={client.id} name={client.name} active={client.active} />
-          </div>
-        )}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
+          <Link
+            href={`/admin/clientes/${client.id}`}
+            className="text-sm font-semibold text-primary underline-offset-4 hover:underline"
+          >
+            Detalhes e aprovadores
+          </Link>
+          {canManage && (
+            <div className="flex flex-wrap justify-end gap-2">
+              <ClientFormDialog
+                mode="edit"
+                client={{ id: client.id, name: client.name, segment: client.segment, initials: client.initials }}
+              />
+              <ArchiveClientButton id={client.id} name={client.name} active={client.active} />
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
