@@ -23,6 +23,14 @@ const KNOWN: Array<[RegExp, string]> = [
   [/já tem acesso ao portal/i, "Este aprovador já tem acesso ao portal."],
   [/não está em aberto/i, "Este convite não está mais em aberto."],
   [/já enviado para aprovação/i, "Este material já foi enviado para aprovação: o conteúdo só muda numa nova revisão."],
+  [/fora de rascunho/i, "Este material já foi enviado para aprovação. Inicie uma revisão para trocar os arquivos."],
+  [/versão já enviada/i, "Esta versão já foi enviada para aprovação: os arquivos não mudam."],
+  [/só a versão mais recente/i, "Só a versão mais recente pode ser alterada."],
+  [/todos os arquivos da versão/i, "A ordem dos slides está desatualizada. Recarregue a página."],
+  [/motivo da revisão/i, "Informe o motivo da revisão (de 10 a 500 caracteres)."],
+  [/aprovado ou com alteração/i, "Só material aprovado ou com alteração pedida entra em revisão."],
+  [/incompatível com o tipo/i, "O arquivo não combina com o tipo do material."],
+  [/fora da pasta do material/i, "Caminho de arquivo inválido."],
   [/operação de revisão/i, "Material aprovado: a nova versão só pode ser criada pela operação de revisão."],
 ];
 

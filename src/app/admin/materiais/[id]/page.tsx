@@ -3,6 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ChevronLeft } from "lucide-react";
+import { FileUploader } from "@/components/materials/file-uploader";
+import { SlidesPanel } from "@/components/materials/slides-panel";
+import { StartRevisionDialog } from "@/components/materials/start-revision-dialog";
+import { VersionsHistory } from "@/components/materials/versions-history";
 import { DeleteMaterialButton } from "@/components/materials/delete-material-button";
 import { MaterialFormDialog } from "@/components/materials/material-form-dialog";
 import { MaterialReview } from "@/components/material-review";
@@ -16,6 +20,7 @@ import { isDemoMode } from "@/lib/env";
 import { formatDate } from "@/lib/format";
 import { clients, comments, decisions, materials, projects } from "@/lib/mock/data";
 import { getMaterial } from "@/lib/materials/queries";
+import { listMaterialVersions } from "@/lib/materials/versions";
 import { ASPECT_RATIO_LABEL, isContentLocked } from "@/lib/materials/schema";
 
 export const metadata: Metadata = { title: "Material" };
@@ -69,6 +74,12 @@ async function MaterialContent({ params }: { params: PageProps<"/admin/materiais
   if (!material) notFound();
   const locked = isContentLocked(material.status);
   const canDelete = material.status === "rascunho" && material.versionCount === 0;
+  const versions = await listMaterialVersions(id);
+  const latest = versions[0];
+  // Versão de trabalho: a mais recente que ainda não foi enviada; só com o material em rascunho se mexe nos arquivos.
+  const working = material.status === "rascunho" && (!latest || !latest.sent) ? (latest ?? null) : null;
+  const canEditFiles = material.status === "rascunho";
+  const canRevise = material.status === "alteracao" || material.status === "aprovado";
 
   const facts: Array<[string, string]> = [
     ["Canal", material.channel || "—"],
@@ -153,18 +164,56 @@ async function MaterialContent({ params }: { params: PageProps<"/admin/materiais
               </dl>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="flex flex-col gap-1.5 text-sm">
-              <h2 className="font-heading text-sm font-bold text-white">Arquivos e versões</h2>
-              <p className="text-muted-foreground">
-                {material.versionCount === 0
-                  ? "Nenhum arquivo ainda. O envio de arquivos e o histórico de versões chegam nas próximas etapas do módulo."
-                  : `${material.versionCount} ${material.versionCount === 1 ? "versão" : "versões"} registrada(s).`}
-              </p>
-            </CardContent>
-          </Card>
         </div>
       </div>
+
+      <section aria-labelledby="arquivos" className="mt-6">
+        <Card>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 id="arquivos" className="font-heading text-base font-bold text-white">
+                Arquivos{working ? ` · versão ${working.number}` : latest ? ` · versão ${latest.number}` : ""}
+              </h2>
+              {canRevise && <StartRevisionDialog materialId={material.id} status={material.status} />}
+            </div>
+            {canEditFiles ? (
+              <>
+                {working ? (
+                  <SlidesPanel versionId={working.id} type={material.type} files={working.files} editable />
+                ) : latest ? (
+                  <p className="text-sm text-muted-foreground">
+                    A versão {latest.number} já foi enviada para aprovação e ficou no histórico. O próximo envio cria uma nova versão.
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Nenhum arquivo ainda. O primeiro envio cria a versão 1.</p>
+                )}
+                <FileUploader materialId={material.id} type={material.type} existingCount={working?.files.length ?? 0} />
+              </>
+            ) : latest ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Os arquivos da versão {latest.number} estão travados porque o material já foi enviado para aprovação.
+                  {canRevise ? " Para trocá-los, inicie uma revisão: ela cria uma nova versão e preserva esta." : ""}
+                </p>
+                <SlidesPanel versionId={latest.id} type={material.type} files={latest.files} editable={false} />
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Este material não tem arquivos.</p>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section aria-labelledby="versoes" className="mt-6">
+        <Card>
+          <CardContent className="flex flex-col gap-3">
+            <h2 id="versoes" className="font-heading text-base font-bold text-white">
+              Histórico de versões
+            </h2>
+            <VersionsHistory versions={versions} />
+          </CardContent>
+        </Card>
+      </section>
     </>
   );
 }
