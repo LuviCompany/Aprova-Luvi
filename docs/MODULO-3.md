@@ -1,6 +1,6 @@
 # Módulo 3 — Gestão de Materiais: plano e acompanhamento
 
-Estado em **2026-11-02**. Autorizado o início do módulo pelo usuário; **etapa A concluída** (clientes e projetos); as etapas B a F **aguardam autorização**, uma a uma.
+Estado em **2026-11-05**. Módulo implementado e testado localmente (etapas A a F); **faltam aplicar as migrations B1, B2, C1 e C2 no Supabase e validar no banco real** (seção 13).
 
 ## 1. Etapas
 
@@ -8,10 +8,10 @@ Estado em **2026-11-02**. Autorizado o início do módulo pelo usuário; **etapa
 |---|---|---|
 | **A** | Clientes (cadastro, edição, listagem, arquivamento) e projetos vinculados a clientes | **Concluída** (este documento) |
 | **B** | Cadastro de materiais: título, legenda, descrição, formato (tipo), proporção, canal, datas; exclusão controlada de rascunhos | **Implementada e commitada (`13ce79a`); migrations B1 e B2 NÃO aplicadas; endurecimento da B1 (tíquete de revisão) ainda sem commit** (seção 12) |
-| C | Upload privado e seguro de imagens, vídeos e PDFs; consistência em caso de falha | Não iniciada |
-| D | Carrosséis com slides ordenados; histórico de versões sem sobrescrever | Não iniciada |
-| E | Dashboard integrado ao Supabase (indicadores com dados reais) | Não iniciada |
-| F | Testes e validações de ponta a ponta, relatório do módulo | Não iniciada |
+| C | Upload privado e seguro de imagens, vídeos e PDFs; consistência em caso de falha | **Implementada localmente; migrations C1 e C2 NÃO aplicadas** (seção 13) |
+| D | Carrosséis com slides ordenados; histórico de versões sem sobrescrever; conteúdo congelado por versão; revisão explícita | **Implementada localmente; migrations C1 e C2 NÃO aplicadas** (seção 13) |
+| E | Dashboard integrado ao Supabase (indicadores com dados reais) | **Implementada localmente** (seção 13) |
+| F | Testes e validações de ponta a ponta, relatório do módulo | **Concluída localmente** (seção 13); falta a validação no Supabase real |
 | **A.2** | Cadastro de aprovadores (inclusive em vários clientes), preparação de convites, escolha de empresa no portal e endurecimento do banco (cliente arquivado, nome sem diferenciar caixa, auditoria) | **Implementada; migrations M1 a M4 aplicadas no projeto de desenvolvimento em 2026-11-03** (seções 9, 10 e 11; validação operacional com dados fictícios aprovada em 2026-11-03) |
 
 Regras do módulo (valem para todas as etapas): não reconstruir o que existe; preservar a identidade visual; respeitar os papéis; **validar a autorização no servidor**; **nunca usar a chave secreta para contornar a RLS em operações comuns**; não permitir acesso a arquivos de outros clientes; não sobrescrever versões; validar formato e tamanho; manter os registros consistentes se o upload falhar; **dados de demonstração nunca se misturam a dados reais**; só dados fictícios de teste, nunca arquivos de clientes reais; sem migration remota, push, merge ou deploy sem autorização expressa.
@@ -505,3 +505,72 @@ Limites do que foi provado: o servidor falso do E2E **não prova a RLS** nem as 
 4. Regra de projeto concluído só no servidor (12.1, item 5).
 5. Sem arquivos: o material fica `rascunho` até as etapas C e D; o portal não mostra nada (a RLS só mostra material enviado).
 6. Observação de baixa prioridade herdada da A.2: formulário que perde o texto depois de recusa. **Resolvido nos diálogos de material** (campos controlados); os diálogos de cliente, projeto e aprovador da etapa A seguem como estavam.
+
+---
+
+# 13. Finalização do Módulo 3 — etapas C, D, E e F (2026-11-05; migrations NÃO aplicadas)
+
+**Estado:** implementado, testado localmente e commitado na `fase-2` (marcos `ab00c2f`, `46fa000`, `5775b67`, `2babcd2`). **Nada foi aplicado no Supabase remoto**; pendentes de aplicação, nesta ordem e uma por vez: **B1, B2, C1, C2** (`MIGRACOES-B.md`, `MIGRACOES-C.md`). Sem push, merge nem deploy.
+
+## 13.1 O que foi entregue
+
+| Requisito | Entrega |
+|---|---|
+| 1. Cadastro real de materiais | Etapa B (seção 12), sem mudança de escopo |
+| 2. Upload privado de imagens, vídeos e PDFs | Três passos (13.2), bucket `materials` privado, tipos e tamanhos validados na tela, no servidor, no bucket e no banco; conferência da **assinatura** do arquivo; limpeza em qualquer falha |
+| 3. Carrosséis com slides e ordenação | 1 a 10 slides (imagem ou vídeo), reordenação acessível por botões (`reorder_version_files` atômico) e remoção com confirmação e compactação |
+| 4. Histórico imutável de versões | `/admin/materiais/[id]` lista as versões (nota, autor, data, arquivos); versões, arquivos de versão enviada e decisões são imutáveis (banco) |
+| 5. Preservação da legenda e do conteúdo por versão | `material_version_contents`: cópia imutável dos `PRESENTED_FIELDS` e do manifesto de arquivos, congelada no envio e ao criar a versão seguinte |
+| 6. Visualização protegida | Rota `/admin/arquivos/[fileId]`: exige a equipe, lê o registro sob a RLS (inexistente e de outro cliente respondem **404 igual**) e redireciona para URL assinada de **60 s**, sem cache e sem Referer. O HTML nunca contém o endereço do storage |
+| 7. Dashboard com dados reais | `/admin` (13.4) |
+| 8. Carregamento, erros e falhas de upload | Esqueletos em todas as telas, erro por arquivo, progresso, nova tentativa só do que falhou (13.2) |
+| Revisão por tíquetes mantida | `start_material_revision` usa `app.grant_revision_ticket`; material aprovado só muda de estado por ela (`MIGRACOES-C.md`) |
+
+## 13.2 Upload em três passos (nenhum byte de arquivo passa pelo servidor do app)
+
+1. `prepareUploadsAction`: autoriza a equipe, valida o lote (tipos, tamanhos, limite de slides, material em rascunho) e devolve **URLs de envio assinadas de uso único**, uma por arquivo, com o caminho `{cliente}/{material}/{uuid}.{ext}` gerado **no servidor**. Nada é gravado no banco.
+2. O navegador envia cada arquivo **direto** ao bucket privado (`PUT` multipart com progresso, dois por vez), sem chaves no navegador.
+3. `finalizeUploadsAction`: confere cada objeto no storage (existe, **tamanho igual ao declarado** e **assinatura dos primeiros bytes** compatível com o tipo: JPEG, PNG, WebP, PDF, MP4, MOV), cria a versão se preciso (v1 ou nova, quando a anterior já foi enviada), grava as linhas de `material_files` e atualiza a tela. Falhou algo: **apaga os objetos enviados** (só os da pasta do próprio material) e devolve o motivo por arquivo. Material de arquivo único tem o arquivo **substituído** (com restauração da linha antiga se a gravação falhar).
+Tudo com o cliente Supabase **do usuário** (RLS e políticas do storage); nenhuma operação usa a chave secreta (`no-secret-key.test`).
+
+## 13.3 Versões e revisão
+
+- A versão de trabalho é a mais recente ainda **sem solicitação de aprovação**; só ela aceita arquivos. Depois de enviada, os arquivos são imutáveis e o próximo envio cria uma **nova versão**.
+- **Iniciar revisão** (material aprovado ou com alteração pedida): motivo de 10 a 500 caracteres, nova versão, material volta a rascunho, histórico preservado. A nota da versão guarda o motivo; a auditoria registra `material.revision_started` **sem** o texto.
+- Nova versão **não** copia os arquivos da anterior (o usuário envia os da nova versão). Possível melhoria futura: copiar pelo storage.
+
+## 13.4 Dashboard real
+
+`/admin` lê materiais (1000 mais recentes) e decisões (500) sob a RLS e mostra: aguardando (com vencidos), alterações solicitadas, aprovados no mês (**fuso de Brasília**), rascunhos, tempo médio de aprovação (solicitação → decisão), prazos vencidos (com links), próximos prazos, decisões por semana, materiais e atividade recentes, com estados vazios e aviso de leitura parcial. A data de referência entra por parâmetro depois de `connection()`. Na demonstração, a tela fictícia continua. O aviso de dados fictícios sai de `/admin` (permanece em histórico e usuários); o rodapé do menu só diz "Fase 1 · dados fictícios" na demonstração. O card "Links de aprovação" é do Módulo 4 e ficou de fora.
+
+## 13.5 Testes e resultados
+
+| Verificação | Resultado |
+|---|---|
+| Lint e `tsc` | Limpos |
+| Vitest (suíte inteira) | **734 aprovados em 46 arquivos** (início do módulo: 511) |
+| — banco (Postgres em memória, 12 migrations) | **273** (21 novos de arquivos, ordenação, conteúdo por versão e revisão; 5 blocos novos do `verify.sql`) |
+| — regras e ações | arquivos 11 · versões 5 · ações de arquivos 21 · rota protegida 4 · dashboard (métricas e consultas) 13 |
+| — componentes | uploader, slides, revisão, histórico e pré-visualização 19; dashboard 3 |
+| Build de produção isolado | Concluído sem erros nem avisos (rota nova: `/admin/arquivos/[fileId]`) |
+| E2E (Playwright) | **110 de 110**: 83 anteriores à etapa B, 12 de materiais, 11 de arquivos e 4 de dashboard |
+| Defeito achado pelo E2E | `reader.cancel()` travava dentro do runtime do Next ao conferir o arquivo; trocado por `AbortController` com limite de 15 s |
+
+O servidor falso do E2E imita Auth, PostgREST **e Storage** (URL assinada, multipart, intervalo de bytes, CORS) e as regras do banco que a interface vê; **não prova a RLS nem as constraints** (isso é do teste de banco).
+
+## 13.6 Pendências e riscos
+
+1. **Aplicar B1, B2, C1 e C2** no DB Aprova Luvi (autorização expressa, uma por vez) e rodar `verify.sql` (28 blocos).
+2. **Validar contra o Supabase real** (próximo passo, seção 13.7): consultas com `select` embutido (versões com `profiles(full_name)`, `material_version_contents`, contagens; decisões com `approvers` e `approval_requests`), `createSignedUploadUrl` e o `PUT` do navegador (CORS do Storage), intervalo de bytes na URL assinada e o limite de 50 MB do plano.
+3. Objetos órfãos no storage e versão 1 vazia em falha rara (`MIGRACOES-C.md`, seção 4).
+4. Nova versão não copia arquivos da anterior.
+5. Aprovação, links, comentários e portal (Módulo 4) seguem não iniciados: nenhum material sai de rascunho pela interface; a trava de conteúdo, o congelamento no envio e a revisão são provados nos testes de banco.
+6. Dashboard lê no máximo 1000 materiais (aviso na tela).
+
+## 13.7 Como validar o Módulo 3 com o Supabase real
+
+1. Autorizar e aplicar **B1, B2, C1, C2** (uma por vez, com hash e verificação) e rodar o `verify.sql` de 28 blocos.
+2. Com `npm run dev` apontando para o projeto de desenvolvimento e **dados fictícios** ("TESTE C"): cadastrar material de cada tipo; subir imagem, PDF, vídeo curto e um carrossel de 3 slides; reordenar e remover; tentar um arquivo com extensão trocada e um acima do limite; interromper a rede no meio de um envio; abrir os arquivos (rota protegida) e conferir que a URL assinada expira.
+3. Conferir no banco (somente leitura): versões, `material_files`, objetos no bucket (sem órfãos), eventos de auditoria sem texto livre e RLS por papel (designer cria, cliente não).
+4. Material aprovado/revisão só pode ser provado no real depois do Módulo 4 (ou forçando o status como administrador do banco, em dados de teste).
+

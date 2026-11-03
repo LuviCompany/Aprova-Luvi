@@ -22,12 +22,14 @@ Três ambientes:
 
 **Módulos prontos e VALIDADOS no projeto de desenvolvimento "DB Aprova Luvi" (2026-11-02; registro em `docs/VALIDACAO-FASE-2.md`):**
 
-1. **Banco de dados** — `supabase/migrations/` (10 arquivos: 4 da Fase 2, 4 da etapa A.2 e 2 da etapa B — estas duas ainda não aplicadas): esquema, funções, RLS, storage, integridade, aprovadores em vários clientes, convites preparados e auditoria. Testado com PGlite (`npm run test:db`) **e aplicado no projeto de desenvolvimento**, com `supabase/verify.sql` (16 blocos) todos em 0.
+1. **Banco de dados** — `supabase/migrations/` (12 arquivos: 4 da Fase 2, 4 da etapa A.2, 2 da etapa B e 2 das etapas C/D — estas quatro ainda não aplicadas): esquema, funções, RLS, storage, integridade, aprovadores em vários clientes, convites preparados e auditoria. Testado com PGlite (`npm run test:db`) **e aplicado no projeto de desenvolvimento**, com `supabase/verify.sql` (16 blocos) todos em 0.
 2. **Autenticação** — Supabase Auth (login, recuperação de senha, convite, logout), `src/proxy.ts`, DAL em `src/lib/auth/session.ts`. Primeiro administrador criado (`admin@luvicompany.com.br`) e login/rotas validados (testes manuais do usuário).
 
 **Módulo 3 (Gestão de Materiais), em andamento por etapas — plano e acompanhamento em `docs/MODULO-3.md`:** a **etapa A (clientes e projetos) está concluída**: `/admin/clientes` e `/admin/projetos` leem e gravam no banco real (cadastro, edição, arquivamento, filtros). A **etapa B (materiais)** está implementada localmente (abaixo). As etapas C a F (upload, carrosséis e versões, dashboard real, testes) **não foram iniciadas** e só começam com autorização expressa, uma por vez.
 
 **Etapa A.2 (aprovadores) implementada e com as migrations `20261103120000` a `20261103120300` APLICADAS no projeto de desenvolvimento em 2026-11-03** (uma por vez, com `verify.sql` de 22 blocos em 0; registro em `docs/MIGRACOES-A2.md`, seção 6; auditoria e retenção em `docs/AUDITORIA.md`). **Validação operacional com dados fictícios aprovada em 2026-11-03** (11 de 11 testes, `docs/MODULO-3.md`, seção 11; os dados de teste "TESTE A2" e os 11 eventos de auditoria permanecem no projeto de desenvolvimento e não devem ser apagados sem autorização). O portal exige **escolha explícita de empresa** quando o aprovador tem mais de um vínculo ativo (nunca "o primeiro").
+
+**Módulo 3 FINALIZADO LOCALMENTE em 2026-11-05 (etapas B a F; `docs/MODULO-3.md`, seção 13):** upload privado (URL assinada de uso único, envio direto do navegador ao bucket `materials`, conferência de tamanho e assinatura no servidor, limpeza em falha), carrosséis de 1 a 10 slides com ordenação, histórico imutável de versões, conteúdo congelado por versão (`material_version_contents`), operação explícita de revisão (`start_material_revision`, com tíquete), visualização protegida (`/admin/arquivos/[fileId]`, URL assinada de 60 s) e dashboard com dados reais. **Migrations B1, B2, C1 e C2 NÃO aplicadas** (ordem: B1, B2, C1, C2, uma por vez; `docs/MIGRACOES-B.md` e `docs/MIGRACOES-C.md`; `verify.sql` com 28 blocos). Testes: Vitest 734, E2E 110.
 
 **Etapa B (cadastro de materiais) implementada em 2026-11-04 (commit `13ce79a`; o endurecimento da B1 com o tíquete de revisão ainda sem commit) e com as migrations `20261104120000` e `20261104120100` (B1 e B2) NÃO aplicadas** (`docs/MODULO-3.md`, seção 12; `docs/MIGRACOES-B.md`): `/admin/materiais` (lista, filtros, paginação, diálogo de cadastro e edição, exclusão de rascunho vazio) e `/admin/materiais/[id]` leem e gravam no banco real **depois** que as migrations forem aplicadas; no modo demonstração seguem fictícias. Conteúdo do material (título, descrição, legenda, canal, proporção) é travado no banco fora de rascunho; material aprovado só muda de estado pela operação explícita de revisão (planejada, ainda inexistente), que exige um **tíquete** (`app.revision_tickets`, vinculado a material, transação e usuário, emitido só por `app.grant_revision_ticket`, sem `EXECUTE` para a API); o antigo sinal `app.revision_in_progress` foi removido por ser forjável. As etapas C a F seguem sem autorização.
 
@@ -99,7 +101,9 @@ src/lib/approvers/  aprovadores (A.2): validação, agrupamento por pessoa, deta
 src/lib/auth/portal-selection.ts  regra pura da escolha de empresa no portal (pickPortalContext)
 src/components/clients/  formulários em janela, cartões e filtros de clientes/projetos
 src/lib/materials/  materiais (etapa B): validação, consultas sob RLS, campos travados e apresentados ao cliente
-src/components/materials/  diálogo de cadastro/edição, filtros, lista e exclusão de rascunho
+src/components/materials/  diálogo de cadastro/edição, filtros, lista, exclusão de rascunho, upload, slides, histórico de versões e revisão
+src/lib/dashboard/  métricas puras (data por parâmetro) e consultas do dashboard real
+src/app/admin/arquivos/[fileId]/route.ts  visualização protegida de arquivos (redireciona para URL assinada de 60 s)
 src/lib/supabase/   server.ts (usuário, RLS), admin.ts (service_role, só servidor), proxy.ts (renovação de sessão)
 src/proxy.ts        primeira barreira: anônimo em /admin, /portal, /redefinir-senha vai ao /login
 src/test/db/        harness PGlite + testes de esquema, RLS, isolamento e aprovação
@@ -113,6 +117,7 @@ docs/CHECKLIST-LANCAMENTO.md checklist de segurança e lançamento
 docs/MODULO-3.md            plano por etapas (A–F), critérios de aceite, resultado da A.2 e teste manual do Módulo 3
 docs/MIGRACOES-A2.md        migrations da A.2: conteúdo, hashes, riscos, procedimento seguro e rollback
 docs/MIGRACOES-B.md         migrations da etapa B (materiais): conteúdo, hashes, procedimento seguro e reversão
+docs/MIGRACOES-C.md         migrations das etapas C/D (arquivos, versões, revisão): conteúdo, hashes, procedimento e reversão
 docs/AUDITORIA.md           o que a auditoria grava (sem dados pessoais) e a política de retenção proposta
 e2e/                testes Playwright
 public/brand/       logo e favicon copiados do site institucional
@@ -149,7 +154,7 @@ Origem: `Site-Luvi` (`CLAUDE.md` e `assets/css`). Tema **único e escuro**, toke
 
 ## Banco de dados e autenticação (Fase 2)
 
-- **Migrations são imutáveis depois de aplicadas** em qualquer projeto Supabase: mudança = nova migration. **As oito primeiras já estão aplicadas no projeto de desenvolvimento (2026-11-02 e 2026-11-03): não edite os arquivos, crie uma migration nova** (as duas da etapa B ainda não foram aplicadas; `verify.sql` tem 27 blocos) (e rode `verify.sql` depois). Toda alteração em `supabase/migrations/` exige `npm run test:db` verde, com teste novo para a regra alterada.
+- **Migrations são imutáveis depois de aplicadas** em qualquer projeto Supabase: mudança = nova migration. **As oito primeiras já estão aplicadas no projeto de desenvolvimento (2026-11-02 e 2026-11-03): não edite os arquivos, crie uma migration nova** (as duas da etapa B ainda não foram aplicadas; `verify.sql` tem 28 blocos) (e rode `verify.sql` depois). Toda alteração em `supabase/migrations/` exige `npm run test:db` verde, com teste novo para a regra alterada.
 - **Função nova = `revoke execute on function … from public, anon;` na própria migration** (o Postgres abre EXECUTE a PUBLIC por padrão e isso não dá para desligar globalmente). `privileges.test.ts` audita o catálogo e reprova qualquer função/tabela/política fora da lista permitida; `supabase/verify.sql` é a mesma auditoria para rodar no projeto real.
 - Modelo: `organizations` → `profiles` (1:1 com `auth.users`, papel `admin|designer|atendimento|cliente`) → `clients` → `approvers` (vínculo opcional a um perfil de login) → `projects` → `materials` → `material_versions` (imutáveis) → `material_files` (um por slide) → `approval_requests` → `approval_links` (só o **hash** do token) → `comments` / `decisions` (imutáveis) / `audit_events`.
 - Todas as tabelas de negócio carregam `client_id`; FKs compostas impedem filho apontando para pai de outro cliente. Nada tem `ON DELETE CASCADE`: arquivar é `active = false`.

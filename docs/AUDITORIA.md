@@ -17,6 +17,8 @@ Estado em **2026-11-02** (Módulo 3, etapa A.2). A tabela `public.audit_events` 
 
 `client.created`, `client.updated`, `client.archived`, `client.reactivated`, `project.created`, `project.updated` (com `status_from`/`status_to` quando o status muda), `approver.created`, `approver.linked` (vínculo de uma pessoa a outro cliente), `approver.updated`, `approver.deactivated`, `approver.reactivated`, `approver_invite.prepared`, `approver_invite.revoked` (e `sent`, `accepted`, `expired` quando a Fase 3 existir).
 
+Etapas C e D (migration C2, **ainda não aplicada**): `material.revision_started` (`status_from`, `status_to`; **sem** o texto do motivo, que fica na nota imutável da nova versão). Os eventos `version.created` e `file.added` já existiam.
+
 Etapa B (migration B2, **ainda não aplicada**): `material.created`, `material.updated` (nomes das colunas alteradas; `status_from`/`status_to` quando o status muda, inclusive pelas funções de aprovação) e `material.deleted` (`status_from`). Como nos demais, o evento não leva título, legenda nem descrição. Excluir material é o único caso de exclusão auditado (só rascunho vazio).
 
 Já existiam: `version.created`, `file.added`, `approval_request.created`, `approval_link.created`, `approval_link.revoked`, `approval_request.cancelled`, `decision.recorded`.
