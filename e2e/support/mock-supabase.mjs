@@ -34,7 +34,7 @@ const USERS = {
 };
 const byId = (id) => Object.entries(USERS).find(([, u]) => u.id === id);
 
-const fresh = () => ({ clients: [], projects: [], approvers: [], invites: [], materials: [], versions: [], files: [], contents: [], requests: [], objects: {}, tokens: {} });
+const fresh = () => ({ clients: [], projects: [], approvers: [], invites: [], materials: [], versions: [], files: [], contents: [], requests: [], decisions: [], objects: {}, tokens: {} });
 let tick = 0;
 const stamp = () => new Date(Date.UTC(2026, 10, 3, 12, 0, tick++)).toISOString();
 let state = fresh();
@@ -315,6 +315,7 @@ async function handle(req, res) {
       if (x.storage_path) state.objects[x.storage_path] = { bytes: Buffer.from(x.bytes ?? "ffd8ffe0", "hex"), mime: x.mime_type ?? "image/jpeg" };
     }
     for (const c of body.contents ?? []) state.contents.push({ frozen_at: stamp(), ...c });
+    for (const d of body.decisions ?? []) state.decisions.push({ id: randomUUID(), via: "portal", approver_name: "Aprovador Teste", requested_at: null, ...d });
     for (const r of body.requests ?? []) state.requests.push({ id: randomUUID(), ...r });
     return send(res, 200, { ok: true });
   }
@@ -546,6 +547,12 @@ async function handle(req, res) {
       state.materials = state.materials.filter((m) => !rows.includes(m));
       return wantsRows(req) ? send(res, 200, rows.map((r) => ({ id: r.id }))) : send(res, 204);
     }
+  }
+
+  if (table === "decisions" && req.method === "GET") {
+    if (!isStaff) return send(res, 200, []);
+    const rows = state.decisions.filter((d) => matches(d, params)).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    return send(res, 200, rows.map((d) => ({ id: d.id, material_id: d.material_id, decision: d.decision, via: d.via, created_at: d.created_at, approvers: { name: d.approver_name }, approval_requests: d.requested_at ? { created_at: d.requested_at } : null })));
   }
 
   if (table === "material_versions") {

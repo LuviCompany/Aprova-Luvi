@@ -36,6 +36,10 @@ function trackPageErrors(page: Page) {
 
 test("admin: o aviso de demonstração fica só nas telas que ainda usam dados fictícios", async ({ page }) => {
   await login(page, "admin@luvi.test");
+  // O dashboard agora lê o banco real: sem aviso. Histórico e usuários ainda usam dados fictícios.
+  await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
+  await expect(page.getByRole("note")).toHaveCount(0);
+  await page.goto("/admin/historico");
   await expect(page.getByRole("note")).toContainText("dados de demonstração");
 
   await page.goto("/admin/clientes");

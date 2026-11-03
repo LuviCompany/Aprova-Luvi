@@ -105,8 +105,8 @@ test("sem materiais: a tela é real (sem aviso de demonstração) e orienta o pr
   await expect(page.getByRole("button", { name: "Novo material" })).toBeVisible();
   expect(errors).toEqual([]);
 
-  // o dashboard ainda usa dados fictícios: o aviso continua lá
-  await page.goto("/admin");
+  // o histórico ainda usa dados fictícios: o aviso continua lá
+  await page.goto("/admin/historico");
   await expect(page.getByRole("note")).toContainText("dados de demonstração");
   await seed();
 });

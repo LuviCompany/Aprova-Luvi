@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
+import { Suspense } from "react";
 import { AlertTriangle, CheckCircle2, Clock, MessageSquareWarning, Timer } from "lucide-react";
 import { KpiCard } from "@/components/kpi-card";
 import { MockDataNotice } from "@/components/interim-data-notice";
@@ -7,7 +9,12 @@ import { MaterialsTable } from "@/components/materials-table";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RealDashboard } from "@/components/dashboard/real-dashboard";
+import { PageSkeleton } from "@/components/page-skeleton";
 import { WeeklyChart } from "@/components/weekly-chart";
+import { requireStaff } from "@/lib/auth/session";
+import { loadDashboard } from "@/lib/dashboard/queries";
+import { isDemoMode } from "@/lib/env";
 import { LINK_STATE_LABEL, computeKpis, decisionsByWeek, resolveLinkState } from "@/lib/domain";
 import { formatDate, formatDateTime, formatDuration } from "@/lib/format";
 import { NOW, approvalLinks, clients, decisions, materials } from "@/lib/mock/data";
@@ -23,6 +30,24 @@ const LINK_STYLE: Record<LinkState, string> = {
 };
 
 export default function AdminDashboardPage() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <DashboardContent />
+    </Suspense>
+  );
+}
+
+async function DashboardContent() {
+  await requireStaff();
+  if (isDemoMode()) return <DemoDashboard />;
+  // Dados reais: a data de referência é lida por requisição (nunca no prerender).
+  await connection();
+  const data = await loadDashboard();
+  return <RealDashboard data={data} now={new Date()} />;
+}
+
+/** Demonstração: os dados fictícios da Fase 1, como sempre. */
+function DemoDashboard() {
   const kpis = computeKpis(materials, decisions, NOW);
   const weekly = decisionsByWeek(decisions, NOW, 6);
   const recent = [...decisions].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5);

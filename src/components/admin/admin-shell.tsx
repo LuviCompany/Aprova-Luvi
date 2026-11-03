@@ -76,7 +76,7 @@ export interface ShellUser {
   roleLabel: string;
 }
 
-export function AdminShell({ user, children }: { user: ShellUser; children: ReactNode }) {
+export function AdminShell({ user, children, demo = false }: { user: ShellUser; children: ReactNode; demo?: boolean }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -93,7 +93,7 @@ export function AdminShell({ user, children }: { user: ShellUser; children: Reac
           <NavList />
         </Suspense>
         <p className="mt-auto px-2 text-xs text-muted-foreground">
-          Fase 1 · dados fictícios
+          {demo ? "Fase 1 · dados fictícios" : "Painel da equipe Luvi"}
         </p>
       </aside>
 

@@ -71,6 +71,13 @@ export default defineConfig({
       dependencies: ["materiais-real"],
       use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${CRUD_PORT}` },
     },
+    {
+      // Mesmo servidor falso: roda por último (estado compartilhado).
+      name: "dashboard-real",
+      testMatch: /dashboard.spec.ts/,
+      dependencies: ["arquivos-real"],
+      use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${CRUD_PORT}` },
+    },
   ],
   webServer: [
     {
