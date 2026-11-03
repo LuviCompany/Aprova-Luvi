@@ -116,6 +116,8 @@ describe("funções", () => {
     "public.link_approver_to_client",
     "public.prepare_approver_invite",
     "public.revoke_approver_invite",
+    "public.reorder_version_files",
+    "public.start_material_revision",
     "app.my_role",
     "app.my_org",
     "app.is_staff",

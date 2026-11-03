@@ -70,7 +70,7 @@ where n.nspname in ('public', 'app')
   and (n.nspname || '.' || p.proname) not in (
     'public.decide_as_approver', 'public.create_approval_link', 'public.revoke_approval_link',
     'public.cancel_approval_request', 'public.link_approver_to_client', 'public.prepare_approver_invite',
-    'public.revoke_approver_invite', 'app.my_role', 'app.my_org', 'app.is_staff', 'app.is_admin',
+    'public.revoke_approver_invite', 'public.reorder_version_files', 'public.start_material_revision', 'app.my_role', 'app.my_org', 'app.is_staff', 'app.is_admin',
     'app.can_manage_clients', 'app.staff_can_access', 'app.my_client_ids', 'app.my_approver_id',
     'app.version_was_sent', 'app.material_was_sent', 'app.material_visible_project', 'app.try_uuid'
   );
@@ -212,5 +212,36 @@ from pg_proc p
 join pg_namespace n on n.oid = p.pronamespace
 cross join (values ('anon'), ('authenticated'), ('service_role')) as r(rolname)
 where n.nspname = 'app'
-  and p.proname in ('grant_revision_ticket', 'has_revision_ticket', 'materials_guard_status', 'materials_guard_content')
+  and p.proname in ('grant_revision_ticket', 'has_revision_ticket', 'materials_guard_status', 'materials_guard_content',
+                   'freeze_version_content', 'requests_freeze_content', 'material_files_validate')
   and has_function_privilege(r.rolname, p.oid, 'EXECUTE');
+
+-- ---------------------------------------------------------------------------
+-- Módulo 3, etapas C e D (migrations 20261105120000 e 20261105120100).
+-- ---------------------------------------------------------------------------
+
+-- CHECK: regras de arquivos e conteúdo por versão ausentes ou abertas (C1 e C2)
+select 'material_files_validate ausente' as problema
+where not exists (
+  select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
+  where c.relname = 'material_files' and g.tgname = 'material_files_validate' and not g.tgisinternal
+)
+union all select 'requests_freeze_content ausente'
+where not exists (
+  select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
+  where c.relname = 'approval_requests' and g.tgname = 'requests_freeze_content' and not g.tgisinternal
+)
+union all select 'material_version_contents ausente ou sem RLS'
+where not exists (
+  select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relname = 'material_version_contents' and c.relrowsecurity
+)
+union all select 'material_version_contents gravável pelo app ou visível ao anônimo'
+where has_any_column_privilege('authenticated', to_regclass('public.material_version_contents'), 'INSERT,UPDATE')
+   or has_table_privilege('authenticated', to_regclass('public.material_version_contents'), 'DELETE')
+   or has_any_column_privilege('anon', to_regclass('public.material_version_contents'), 'SELECT,INSERT,UPDATE')
+union all select 'imutabilidade de material_version_contents ausente'
+where not exists (
+  select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
+  where c.relname = 'material_version_contents' and g.tgname = 'version_contents_immutable' and not g.tgisinternal
+);
