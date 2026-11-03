@@ -82,3 +82,8 @@ Os testes 3, 4 e 5 foram **realizados manualmente pelo usuário** em 2026-11-02;
 ## 8. Histórico de commits da validação (branch `fase-2`)
 
 `b9532ad` conexão validada, E2E hermético · `85821a7` falha de rede ≠ sem sessão · `83ea1b5` correção do menu · `fe9ae14` `Date.now` no login e build/E2E isolados. Os commits desta documentação vêm depois (ver `git log`).
+
+## 9. Módulo 3, etapa A.2: migrations aplicadas no projeto de desenvolvimento (2026-11-03)
+
+As migrations `20261103120000` a `20261103120300` (integridade de clientes e projetos, aprovador em vários clientes, convites preparados e auditoria) foram aplicadas no DB Aprova Luvi, uma por vez, com conferência do SHA-256 do texto e verificação no catálogo depois de cada uma. O `verify.sql` atualizado (22 blocos) devolveu **0 em todos**; o bucket `materials` segue privado; a conta administrativa está íntegra; nenhum dado foi criado. Registro completo, hashes, a ocorrência de colagem na M2 e o pendente (teste manual com dados fictícios) em `docs/MIGRACOES-A2.md`, seção 6.
+

@@ -12,7 +12,7 @@ Estado em **2026-11-02**. Autorizado o início do módulo pelo usuário; **etapa
 | D | Carrosséis com slides ordenados; histórico de versões sem sobrescrever | Não iniciada |
 | E | Dashboard integrado ao Supabase (indicadores com dados reais) | Não iniciada |
 | F | Testes e validações de ponta a ponta, relatório do módulo | Não iniciada |
-| **A.2** | Cadastro de aprovadores (inclusive em vários clientes), preparação de convites, escolha de empresa no portal e endurecimento do banco (cliente arquivado, nome sem diferenciar caixa, auditoria) | **Implementada localmente; migrations M1 a M4 NÃO aplicadas no Supabase** (seções 9 e 10) |
+| **A.2** | Cadastro de aprovadores (inclusive em vários clientes), preparação de convites, escolha de empresa no portal e endurecimento do banco (cliente arquivado, nome sem diferenciar caixa, auditoria) | **Implementada; migrations M1 a M4 aplicadas no projeto de desenvolvimento em 2026-11-03** (seções 9 e 10; teste manual com dados fictícios pendente) |
 
 Regras do módulo (valem para todas as etapas): não reconstruir o que existe; preservar a identidade visual; respeitar os papéis; **validar a autorização no servidor**; **nunca usar a chave secreta para contornar a RLS em operações comuns**; não permitir acesso a arquivos de outros clientes; não sobrescrever versões; validar formato e tamanho; manter os registros consistentes se o upload falhar; **dados de demonstração nunca se misturam a dados reais**; só dados fictícios de teste, nunca arquivos de clientes reais; sem migration remota, push, merge ou deploy sem autorização expressa.
 
@@ -292,7 +292,7 @@ Novas Server Actions: `saveApproverAction`, `setApproverActiveAction`, `linkAppr
 
 # 10. Etapa A.2 — resultado da implementação (2026-11-02)
 
-**Implementada e testada localmente. As migrations M1 a M4 NÃO foram aplicadas em nenhum projeto Supabase** (aguardam a revisão e a autorização expressa do usuário). Nada foi commitado nem enviado.
+**Implementada e testada localmente; commit `91c47ef`. As migrations M1 a M4 foram aplicadas no projeto de desenvolvimento em 2026-11-03**, uma por vez, com `verify.sql` (22 blocos) em 0 (`docs/MIGRACOES-A2.md`, seção 6). Falta o teste manual com dados fictícios.
 
 ## 10.1 O que foi entregue
 
@@ -348,5 +348,5 @@ Notas: o servidor falso do E2E **não prova a RLS** (isso é do teste de banco);
 | 7 | E-mail do aprovador imutável e igual ao do login (comparação normalizada); login não vincula a outro e-mail | Atendido | testes da M2 (grants e gatilho) |
 | 8 | Preparar convite não envia nada, não cria usuário nem token | Atendido | M3 sem colunas de token/e-mail; ação só chama a função |
 | 9 | Nenhuma regressão da etapa A; suíte inteira verde | Atendido | seção 10.3 |
-| 10 | Validação no banco real após autorização | **Pendente** (migrations não aplicadas) | `MIGRACOES-A2.md` seção 3 |
+| 10 | Validação no banco real após autorização | **Atendido** (2026-11-03) | `verify.sql` 22/22 em 0; `MIGRACOES-A2.md` seção 6. Auditoria ainda sem eventos reais (teste manual pendente) |
 | P | Portal: seleção explícita de empresa, validada no servidor sob RLS, sem escolher o primeiro vínculo | Atendido | `approvers.test.ts` (`pickPortalContext`), `portal/actions.test.ts`, E2E (cookie adulterado ignorado) |

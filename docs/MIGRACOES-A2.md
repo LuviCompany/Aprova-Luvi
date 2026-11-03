@@ -1,6 +1,6 @@
 # Migrations da etapa A.2 — conteúdo e procedimento seguro de aplicação
 
-Estado em **2026-11-02**: as quatro migrations estão **criadas e testadas localmente** (Postgres em memória com todas as migrations). **Nenhuma foi aplicada em projeto Supabase algum.** A aplicação depende da **autorização expressa** do usuário, uma migration por vez.
+Estado em **2026-11-03**: as quatro migrations foram **criadas e testadas localmente** (Postgres em memória com todas as migrations) e **aplicadas no projeto de desenvolvimento DB Aprova Luvi** com autorização expressa do usuário, uma por vez (registro e verificações na seção 6). **Não existe projeto de produção**; qualquer novo projeto repete o procedimento da seção 3.
 
 Projeto-alvo: **somente** o de desenvolvimento, **DB Aprova Luvi** (`kswnwootbdzlhdvbhhpk`). Não existe projeto de produção ainda.
 
@@ -141,3 +141,28 @@ drop trigger if exists approvers_guard_active_client on public.approvers;
 drop function if exists app.guard_active_client();
 drop index if exists public.clients_org_name_ci_key;
 ```
+
+## 6. Registro da aplicação no DB Aprova Luvi (2026-11-03)
+
+Executada no SQL Editor do projeto `kswnwootbdzlhdvbhhpk` (título do painel "DB Aprova Luvi"), com autorização expressa do usuário, **uma migration por vez**, na ordem M1 → M4, pelo assistente no navegador do app com o usuário logado. Commit de origem: `91c47ef`.
+
+**Antes (somente leitura):** arquivos SQL idênticos aos do commit (hashes da seção 1); 15 tabelas com RLS, 39 políticas, 22 funções em `app` e 5 em `public`, 0 funções executáveis por `anon`, 0 `SECURITY DEFINER` sem `search_path` vazio, bucket `materials` privado; M1 a M4 ausentes; 0 clientes, projetos, aprovadores e eventos de auditoria (só o administrador); 0 nomes duplicados; `approvers_profile_id_key` presente; 0 logins em mais de um cliente; nenhum projeto da Vercel com variável de Supabase legível apontando para este projeto (o `system` tem variáveis cifradas, não verificável).
+
+| Migration | SHA-256 do texto no editor | Resultado | Conferência depois (catálogo) |
+|---|---|---|---|
+| M1 | `15fd17918de5b774` | Success | 2 gatilhos `*_guard_active_client`; índice `clients_org_name_ci_key`; função `SECURITY DEFINER`, `search_path` vazio, sem `EXECUTE` para `anon`, `authenticated` e `service_role` |
+| M2 | `e0e2a6cc12692a91` | Success | `approvers_profile_client_key (profile_id, client_id)` criada e `approvers_profile_id_key` removida; `link_approver_to_client` só para `authenticated` e `service_role`; gatilho `approvers_after_deactivate`; `approvers_check_profile` com a regra do e-mail; `profile_id` e `email` sem permissão de escrita para o app |
+| M3 | `3dd5de9f87bfca4b` | Success | `approver_invites` com RLS, 1 política (`SELECT`), o app só lê, `anon` sem acesso, sem colunas de token, e-mail ou nome; funções `prepare_` e `revoke_approver_invite` fechadas para `anon`; gatilho `approvers_revoke_open_invites` |
+| M4 | `f8c1c6e6c61d3666` | Success | 4 gatilhos `*_audit_row`; `audit_row_change` sem `EXECUTE` para o app; `audit_events` imutável, sem escrita pelo app, leitura só do administrador |
+
+Em **cada passo** a regressão foi conferida: nenhuma tabela sem RLS (16 de 16 depois da M3), 40 políticas depois da M3, 0 grants e 0 funções executáveis por `anon`, 0 `SECURITY DEFINER` sem `search_path` vazio, `decide_via_link` só para o servidor.
+
+**Ocorrência na M2:** o hash do texto colado não bateu com o do arquivo na primeira colagem, porque a colagem omitiu a linha em branco final do arquivo (termina em `;` + duas quebras de linha). Nada foi executado; a colagem foi completada até ficar byte a byte igual (4273 bytes, hash `e0e2a6cc12692a91`) e só então executada. O repositório não tinha divergência.
+
+**Depois das quatro:**
+- `supabase/verify.sql` (hash `94824e74bf85018e`, 22 blocos, cada um dentro de um `count(*)`): **todos devolveram 0**. O bloco 22 (metadata de auditoria sem dados pessoais) passou com a tabela vazia: ainda não foi exercitado com eventos reais.
+- Bucket `materials`: único, privado, 50 MB. Conta administrativa: 1 usuário, `admin@luvicompany.com.br`, confirmado, sem banimento, perfil `admin` ativo; cadastro livre desligado.
+- Nenhum dado criado: clientes, projetos, aprovadores, convites e auditoria seguem em 0. Nenhum convite enviado, bootstrap não executado, Auth não alterado.
+- API com as chaves atuais: `anon` recebe 401 (permissão negada) em `approver_invites` e nas três funções novas (como no controle `decide_via_link`); o servidor enxerga `approver_invites` (cache de esquema atualizado).
+
+**Pendente:** o teste manual da seção 3.3 (item 3) no `npm run dev`, com dados fictícios. É ele que grava os primeiros eventos de auditoria e exercita o bloco 22 com dados.
