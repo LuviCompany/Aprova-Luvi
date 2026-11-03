@@ -13,6 +13,10 @@
  * Materiais (etapa B): imita o PostgREST de `materials` (lista com contagem e página, cadastro, edição, exclusão) e as
  * travas do banco que a interface precisa ver (conteúdo travado fora de rascunho, cliente arquivado, FK de versões).
  *
+ * Versões, arquivos e storage (etapas C e D): imita versões (número automático, congelamento da anterior), arquivos com
+ * as regras do banco (tipo x material, posição, versão enviada), a ordenação, a revisão e o storage privado (URL assinada de
+ * envio e de leitura, upload multipart, intervalo de bytes, CORS), para o upload real do navegador.
+ *
  * Usuários de teste (qualquer senha): admin@luvi.test, atendimento@luvi.test, designer@luvi.test,
  * cliente@luvi.test (aprova para 2 empresas) e cliente1@luvi.test (aprova para 1).
  */
@@ -30,7 +34,7 @@ const USERS = {
 };
 const byId = (id) => Object.entries(USERS).find(([, u]) => u.id === id);
 
-const fresh = () => ({ clients: [], projects: [], approvers: [], invites: [], materials: [], versions: [] });
+const fresh = () => ({ clients: [], projects: [], approvers: [], invites: [], materials: [], versions: [], files: [], contents: [], requests: [], objects: {}, tokens: {} });
 let tick = 0;
 const stamp = () => new Date(Date.UTC(2026, 10, 3, 12, 0, tick++)).toISOString();
 let state = fresh();
@@ -133,6 +137,156 @@ function approverRow(a) {
   return { ...a, clients: client ? { name: client.name } : null, client: client ? { name: client.name } : null };
 }
 
+
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, PUT, POST, DELETE, OPTIONS",
+  "access-control-allow-headers": "*",
+};
+const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime", "application/pdf"];
+
+async function readRaw(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
+/** Extrai o arquivo (parte de nome vazio) de um corpo multipart, como o cliente oficial do Supabase envia. */
+function parseMultipartFile(buffer, contentType) {
+  const boundary = /boundary=(.+)$/.exec(contentType ?? "")?.[1];
+  if (!boundary) return null;
+  const delimiter = Buffer.from("--" + boundary);
+  let start = buffer.indexOf(delimiter);
+  while (start !== -1) {
+    const headerEnd = buffer.indexOf("\r\n\r\n", start);
+    if (headerEnd === -1) return null;
+    const head = buffer.slice(start + delimiter.length, headerEnd).toString();
+    const next = buffer.indexOf(delimiter, headerEnd);
+    if (/name=""/.test(head) && next !== -1) {
+      return { bytes: buffer.slice(headerEnd + 4, next - 2), mime: /content-type:\s*([^\r\n]+)/i.exec(head)?.[1]?.trim() ?? "application/octet-stream" };
+    }
+    start = next;
+  }
+  return null;
+}
+
+function handleStorage(req, res, url, path) {
+  const respond = (status, body, headers = {}) => {
+    const text = body === undefined ? "" : typeof body === "string" || Buffer.isBuffer(body) ? body : JSON.stringify(body);
+    res.writeHead(status, { ...CORS, "content-type": typeof body === "object" && !Buffer.isBuffer(body) ? "application/json" : (headers["content-type"] ?? "application/octet-stream"), ...headers });
+    res.end(text);
+  };
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, CORS);
+    return res.end();
+  }
+  const rest = path.replace("/storage/v1/", "");
+  const m = /^object\/(upload\/sign|sign)\/materials\/(.+)$/.exec(rest);
+  const staff = (() => {
+    const w = actor(req);
+    return w && w.role !== "cliente" ? w : null;
+  })();
+
+  return (async () => {
+    if (m && m[1] === "upload/sign" && req.method === "POST") {
+      if (!staff) return respond(403, { error: "Unauthorized", message: "new row violates row-level security policy" });
+      const objectPath = decodeURIComponent(m[2]);
+      const token = randomUUID();
+      state.tokens[token] = { path: objectPath, kind: "upload" };
+      return respond(200, { url: `/object/upload/sign/materials/${m[2]}?token=${token}` });
+    }
+    if (m && m[1] === "upload/sign" && req.method === "PUT") {
+      const token = url.searchParams.get("token");
+      const grant = state.tokens[token ?? ""];
+      const objectPath = decodeURIComponent(m[2]);
+      if (!grant || grant.kind !== "upload" || grant.path !== objectPath) return respond(403, { error: "invalid token" });
+      const raw = await readRaw(req);
+      const file = parseMultipartFile(raw, req.headers["content-type"]);
+      if (!file) return respond(400, { error: "corpo inválido" });
+      if (!ALLOWED_MIME.includes(file.mime)) return respond(415, { error: "mime type not supported" });
+      if (file.bytes.length > 52428800) return respond(413, { error: "The object exceeded the maximum allowed size" });
+      if (state.objects[objectPath]) return respond(409, { error: "The resource already exists" });
+      delete state.tokens[token];
+      state.objects[objectPath] = { bytes: file.bytes, mime: file.mime };
+      return respond(200, { Key: `materials/${objectPath}` });
+    }
+    if (m && m[1] === "sign" && req.method === "POST") {
+      if (!staff) return respond(403, { error: "Unauthorized" });
+      const objectPath = decodeURIComponent(m[2]);
+      if (!state.objects[objectPath]) return respond(400, { error: "Object not found", message: "Object not found" });
+      // RLS do storage: só arquivos de clientes que a equipe enxerga
+      if (!clientOf(objectPath.split("/")[0])) return respond(400, { error: "Object not found", message: "Object not found" });
+      const token = randomUUID();
+      state.tokens[token] = { path: objectPath, kind: "read" };
+      return respond(200, { signedURL: `/object/sign/materials/${m[2]}?token=${token}` });
+    }
+    if (m && m[1] === "sign" && req.method === "GET") {
+      const token = url.searchParams.get("token");
+      const grant = state.tokens[token ?? ""];
+      const objectPath = decodeURIComponent(m[2]);
+      const object = state.objects[objectPath];
+      if (!grant || grant.kind !== "read" || grant.path !== objectPath || !object) return respond(400, { error: "invalid token" });
+      const range = /^bytes=(\d+)-(\d+)?$/.exec(req.headers.range ?? "");
+      if (range) {
+        const from = Number(range[1]);
+        const to = Math.min(range[2] ? Number(range[2]) : object.bytes.length - 1, object.bytes.length - 1);
+        return respond(206, object.bytes.slice(from, to + 1), { "content-type": object.mime, "content-range": `bytes ${from}-${to}/${object.bytes.length}`, "cache-control": "no-store" });
+      }
+      return respond(200, object.bytes, { "content-type": object.mime, "cache-control": "no-store" });
+    }
+    if (rest === "object/materials" && req.method === "DELETE") {
+      if (!staff) return respond(403, { error: "Unauthorized" });
+      const { prefixes = [] } = JSON.parse((await readRaw(req)).toString() || "{}");
+      for (const p of prefixes) delete state.objects[p];
+      return respond(200, prefixes.map((name) => ({ name })));
+    }
+    return respond(404, { error: "rota de storage não existe no mock" });
+  })();
+}
+
+
+/** Congela o conteúdo apresentado de uma versão (cópia imutável), como a função do banco. */
+function freezeVersion(version) {
+  if (state.contents.some((c) => c.version_id === version.id)) return;
+  const m = state.materials.find((x) => x.id === version.material_id);
+  state.contents.push({
+    version_id: version.id,
+    material_id: version.material_id,
+    frozen_at: stamp(),
+    content: {
+      title: m.title, description: m.description, caption: m.caption, type: m.type, aspect_ratio: m.aspect_ratio,
+      channel: m.channel, publish_date: m.publish_date, due_date: m.due_date,
+      files: state.files.filter((x) => x.version_id === version.id).sort((a, b) => a.slide_position - b.slide_position)
+        .map((x) => ({ position: x.slide_position, kind: x.kind, mime_type: x.mime_type, original_name: x.original_name, size_bytes: x.size_bytes, checksum_sha256: x.checksum_sha256 })),
+    },
+  });
+}
+
+/** Cria a próxima versão como o gatilho do banco (congela a anterior e devolve o material a rascunho). */
+function createVersion(material, note, userId, viaRevision = false) {
+  const own = state.versions.filter((v) => v.material_id === material.id);
+  const previous = own.sort((a, b) => b.number - a.number)[0];
+  if (previous) freezeVersion(previous);
+  const version = { id: randomUUID(), material_id: material.id, client_id: material.client_id, number: (previous?.number ?? 0) + 1, note, created_at: stamp(), created_by: userId };
+  state.versions.push(version);
+  if (material.status !== "rascunho") { void viaRevision; material.status = "rascunho"; }
+  return version;
+}
+
+const KIND_OF = { "image/jpeg": "imagem", "image/png": "imagem", "image/webp": "imagem", "video/mp4": "video", "video/quicktime": "video", "application/pdf": "pdf" };
+function fileRuleError(material, version, row) {
+  const latest = Math.max(...state.versions.filter((v) => v.material_id === material.id).map((v) => v.number));
+  if (material.status !== "rascunho") return raise("material fora de rascunho: inicie uma revisão para trocar os arquivos", "23514");
+  if (version.number !== latest) return raise("só a versão mais recente aceita arquivos", "23514");
+  if (!String(row.storage_path).startsWith(`${material.client_id}/${material.id}/`)) return raise("caminho do arquivo fora da pasta do material", "23514");
+  const ok =
+    (material.type === "imagem" && row.kind === "imagem" && row.slide_position === 1) ||
+    (material.type === "video" && row.kind === "video" && row.slide_position === 1) ||
+    (material.type === "pdf" && row.kind === "pdf" && row.slide_position === 1) ||
+    (material.type === "carrossel" && ["imagem", "video"].includes(row.kind) && row.slide_position >= 1 && row.slide_position <= 10);
+  return ok ? null : raise("arquivo incompatível com o tipo do material", "23514");
+}
+
 async function handle(req, res) {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
   const path = url.pathname;
@@ -143,6 +297,7 @@ async function handle(req, res) {
     state = fresh();
     return send(res, 200, { ok: true });
   }
+  if (path === "/__objects") return send(res, 200, Object.keys(state.objects).sort());
   if (path === "/__seed") {
     const body = await readBody(req);
     for (const c of body.clients ?? []) state.clients.push({ segment: "", initials: "XX", active: true, organization_id: ORG, ...c });
@@ -151,9 +306,21 @@ async function handle(req, res) {
     for (const m of body.materials ?? []) {
       state.materials.push({ status: "rascunho", description: "", caption: "", channel: "", aspect_ratio: null, publish_date: null, due_date: null, created_at: stamp(), updated_at: stamp(), ...m });
     }
-    for (const v of body.versions ?? []) state.versions.push({ id: randomUUID(), ...v });
+    for (const v of body.versions ?? []) {
+      const number = state.versions.filter((x) => x.material_id === v.material_id).length + 1;
+      state.versions.push({ id: randomUUID(), number, note: "", created_at: stamp(), created_by: null, ...v });
+    }
+    for (const x of body.files ?? []) {
+      state.files.push({ id: randomUUID(), checksum_sha256: null, original_name: "arquivo.jpg", size_bytes: 10, created_at: stamp(), ...x });
+      if (x.storage_path) state.objects[x.storage_path] = { bytes: Buffer.from(x.bytes ?? "ffd8ffe0", "hex"), mime: x.mime_type ?? "image/jpeg" };
+    }
+    for (const c of body.contents ?? []) state.contents.push({ frozen_at: stamp(), ...c });
+    for (const r of body.requests ?? []) state.requests.push({ id: randomUUID(), ...r });
     return send(res, 200, { ok: true });
   }
+
+  // ---- Storage (URLs assinadas; o navegador envia e lê direto daqui, de outra origem: CORS)
+  if (path.startsWith("/storage/v1/")) return handleStorage(req, res, url, path);
 
   // ---- Auth
   if (path === "/auth/v1/token" && req.method === "POST") {
@@ -219,6 +386,29 @@ async function handle(req, res) {
       if (!["preparado", "enviado"].includes(invite.status)) return send(res, 400, raise("o convite não está em aberto"));
       invite.status = "revogado";
       return send(res, 200, null);
+    }
+    if (fn === "reorder_version_files") {
+      const version = state.versions.find((v) => v.id === body.p_version_id);
+      if (!version || !isStaff) return send(res, 400, raise("sem permissão", "42501"));
+      if (state.requests.some((r) => r.version_id === version.id)) return send(res, 400, raise("versão já enviada para aprovação: a ordem não muda", "23514"));
+      const latest = Math.max(...state.versions.filter((v) => v.material_id === version.material_id).map((v) => v.number));
+      if (version.number !== latest) return send(res, 400, raise("só a versão mais recente pode ser reordenada", "23514"));
+      const own = state.files.filter((x) => x.version_id === version.id);
+      const order = body.p_order ?? [];
+      if (order.length !== own.length || new Set(order).size !== own.length || order.some((id) => !own.some((x) => x.id === id))) {
+        return send(res, 400, raise("a ordem precisa listar todos os arquivos da versão, sem repetir", "22023"));
+      }
+      order.forEach((id, i) => { own.find((x) => x.id === id).slide_position = i + 1; });
+      return send(res, 200, null);
+    }
+    if (fn === "start_material_revision") {
+      const material = state.materials.find((x) => x.id === body.p_material_id);
+      if (!material || !isStaff) return send(res, 400, raise("sem permissão", "42501"));
+      if (!["aprovado", "alteracao"].includes(material.status)) return send(res, 400, raise("só material aprovado ou com alteração pedida pode entrar em revisão", "23514"));
+      const reason = String(body.p_reason ?? "").trim();
+      if (reason.length < 10 || reason.length > 500) return send(res, 400, raise("informe o motivo da revisão (de 10 a 500 caracteres)", "22023"));
+      const version = createVersion(material, reason, who.id, true);
+      return send(res, 200, version.id);
     }
     return send(res, 404, { code: "PGRST202", message: `função ${fn} não existe no mock` });
   }
@@ -354,6 +544,80 @@ async function handle(req, res) {
         return send(res, 409, { code: "23503", message: "violates foreign key constraint" });
       }
       state.materials = state.materials.filter((m) => !rows.includes(m));
+      return wantsRows(req) ? send(res, 200, rows.map((r) => ({ id: r.id }))) : send(res, 204);
+    }
+  }
+
+  if (table === "material_versions") {
+    const select = url.searchParams.get("select") ?? "";
+    if (req.method === "GET") {
+      if (!isStaff) return send(res, 200, []);
+      let rows = state.versions.filter((v) => matches(v, params));
+      const [col, dir] = (url.searchParams.get("order") ?? "number.asc").split(".");
+      rows = rows.sort((a, b) => (dir === "desc" ? b[col] - a[col] : a[col] - b[col]));
+      if (url.searchParams.get("limit")) rows = rows.slice(0, Number(url.searchParams.get("limit")));
+      const counts = /material_files\(count\)/.test(select);
+      return send(
+        res,
+        200,
+        rows.map((v) => {
+          const files = state.files.filter((x) => x.version_id === v.id).sort((a, b) => a.slide_position - b.slide_position);
+          const content = state.contents.find((c) => c.version_id === v.id);
+          const requests = state.requests.filter((r) => r.version_id === v.id).length;
+          return {
+            ...v,
+            profiles: byId(v.created_by) ? { full_name: byId(v.created_by)[1].name } : null,
+            material_files: counts ? [{ count: files.length }] : files,
+            material_version_contents: content ? { content: content.content, frozen_at: content.frozen_at } : null,
+            approval_requests: [{ count: requests }],
+          };
+        }),
+      );
+    }
+    if (req.method === "POST") {
+      if (!isStaff) return send(res, 403, rlsError("material_versions"));
+      const body = await readBody(req);
+      if (body.created_by !== who.id) return send(res, 403, rlsError("material_versions"));
+      const material = state.materials.find((x) => x.id === body.material_id && x.client_id === body.client_id);
+      if (!material) return send(res, 400, raise("material inválido para esta versão"));
+      if (material.status === "aprovado") return send(res, 400, raise("material aprovado: use a operação de revisão para criar uma nova versão", "23514"));
+      const version = createVersion(material, body.note ?? "", who.id);
+      return wantsRows(req) ? send(res, 201, [{ id: version.id }]) : send(res, 201);
+    }
+  }
+
+  if (table === "material_files") {
+    if (req.method === "GET") {
+      if (!isStaff) return send(res, 200, []);
+      const rows = state.files.filter((x) => matches(x, params)).sort((a, b) => a.slide_position - b.slide_position);
+      return send(res, 200, rows);
+    }
+    if (req.method === "POST") {
+      if (!isStaff) return send(res, 403, rlsError("material_files"));
+      const body = await readBody(req);
+      const list = Array.isArray(body) ? body : [body];
+      const created = [];
+      for (const row of list) {
+        if (row.created_by !== who.id) return send(res, 403, rlsError("material_files"));
+        const version = state.versions.find((v) => v.id === row.version_id && v.material_id === row.material_id && v.client_id === row.client_id);
+        const material = state.materials.find((x) => x.id === row.material_id);
+        if (!version || !material) return send(res, 409, { code: "23503", message: "violates foreign key constraint" });
+        if (state.requests.some((r) => r.version_id === version.id)) return send(res, 403, rlsError("material_files"));
+        if (state.files.some((x) => x.version_id === version.id && x.slide_position === row.slide_position) || state.files.some((x) => x.storage_path === row.storage_path)) {
+          return send(res, 409, { code: "23505", message: "duplicate key value violates unique constraint" });
+        }
+        if (!KIND_OF[row.mime_type] || KIND_OF[row.mime_type] !== row.kind) return send(res, 400, { code: "23514", message: "violates check constraint" });
+        const problem = fileRuleError(material, version, row);
+        if (problem) return send(res, 400, problem);
+        created.push({ id: randomUUID(), created_at: stamp(), checksum_sha256: null, ...row });
+      }
+      state.files.push(...created);
+      return wantsRows(req) ? send(res, 201, created) : send(res, 201);
+    }
+    if (req.method === "DELETE") {
+      if (!isStaff) return send(res, 403, { code: "42501", message: "permission denied for table material_files" });
+      const rows = state.files.filter((x) => matches(x, params) && !state.requests.some((r) => r.version_id === x.version_id));
+      state.files = state.files.filter((x) => !rows.includes(x));
       return wantsRows(req) ? send(res, 200, rows.map((r) => ({ id: r.id }))) : send(res, 204);
     }
   }

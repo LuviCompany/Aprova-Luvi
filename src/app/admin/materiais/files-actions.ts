@@ -133,28 +133,42 @@ export async function prepareUploadsAction(materialId: string, files: FileMeta[]
 async function inspectUpload(supabase: SupabaseClient, item: UploadedItem): Promise<string | null> {
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(item.path, 60);
   if (error || !data?.signedUrl) return "O arquivo não chegou ao armazenamento. Envie de novo.";
+  // Só os primeiros bytes interessam: o AbortController encerra a leitura (e dá um limite de tempo) sem baixar o arquivo todo.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
   let response: Response;
   try {
-    response = await fetch(data.signedUrl, { headers: { Range: "bytes=0-63" }, cache: "no-store" });
+    response = await fetch(data.signedUrl, { headers: { Range: "bytes=0-63" }, cache: "no-store", signal: controller.signal });
   } catch {
+    clearTimeout(timer);
     return "Não foi possível conferir o arquivo enviado. Tente de novo.";
   }
-  if (!response.ok) return "O arquivo não chegou ao armazenamento. Envie de novo.";
+  if (!response.ok) {
+    clearTimeout(timer);
+    controller.abort();
+    return "O arquivo não chegou ao armazenamento. Envie de novo.";
+  }
   const range = /\/(\d+)$/.exec(response.headers.get("content-range") ?? "");
   const total = range ? Number(range[1]) : Number(response.headers.get("content-length"));
   const reader = response.body?.getReader();
   const head = new Uint8Array(64);
   let filled = 0;
-  if (reader) {
-    while (filled < head.length) {
-      const { done, value } = await reader.read();
-      if (done || !value) break;
-      const take = Math.min(value.length, head.length - filled);
-      head.set(value.subarray(0, take), filled);
-      filled += take;
+  try {
+    if (reader) {
+      while (filled < head.length) {
+        const { done, value } = await reader.read();
+        if (done || !value) break;
+        const take = Math.min(value.length, head.length - filled);
+        head.set(value.subarray(0, take), filled);
+        filled += take;
+      }
     }
-    await reader.cancel().catch(() => undefined);
+  } catch {
+    clearTimeout(timer);
+    return "Não foi possível conferir o arquivo enviado. Tente de novo.";
   }
+  clearTimeout(timer);
+  controller.abort(); // encerra a leitura (se o storage ignorasse o intervalo, não baixa o arquivo inteiro)
   if (!Number.isFinite(total) || total !== item.size) return "O tamanho do arquivo enviado não confere. Envie de novo.";
   if (!contentMatchesDeclared(item.type, head.subarray(0, filled))) {
     return "O conteúdo não corresponde ao formato do arquivo (pode estar corrompido ou ter outra extensão).";

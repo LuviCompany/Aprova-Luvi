@@ -64,6 +64,13 @@ export default defineConfig({
       dependencies: ["crud-real"],
       use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${CRUD_PORT}` },
     },
+    {
+      // Mesmo servidor falso: roda DEPOIS dos outros dois (estado compartilhado).
+      name: "arquivos-real",
+      testMatch: /arquivos.spec.ts/,
+      dependencies: ["materiais-real"],
+      use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${CRUD_PORT}` },
+    },
   ],
   webServer: [
     {
