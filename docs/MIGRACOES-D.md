@@ -1,6 +1,6 @@
 # Migrations D1 e D2 (motor de aprovação, Módulo 4)
 
-Estado em **2026-11-04**: as duas migrations estão **escritas e testadas LOCALMENTE** (PGlite, 301 testes de banco) e **NÃO foram aplicadas em nenhum projeto Supabase**. Aplicar exige autorização expressa, uma de cada vez, na ordem D1, D2.
+Estado em **2026-11-04**: testadas localmente (PGlite, 301 testes de banco) e **APLICADAS no projeto de desenvolvimento "DB Aprova Luvi" (`kswnwootbdzlhdvbhhpk`) em 2026-11-04**, uma por vez, na ordem D1, D2, com `verify.sql` de 30 blocos todos em 0 (seção 6). Para qualquer outro projeto vale o procedimento da seção 4, com autorização expressa.
 
 ## 1. Arquivos e hashes
 
@@ -44,3 +44,13 @@ Também: `create_approval_link` exige que o aprovador seja o **da solicitação*
 ## 5. Reversão de emergência
 
 Nova migration, nunca edição. Só antes de existirem solicitações/decisões que dependam do modelo novo (solicitações com `approver_id`): recriar `decide_via_link` com a verificação de sessão (nunca a versão sem código), devolver o `INSERT` e o índice antigos. Decisões são imutáveis: não há como "desfazer" dado gravado, só desligar o fluxo.
+
+## 6. Registro da aplicação no projeto de desenvolvimento (2026-11-04)
+
+Executada pelo SQL Editor do painel do Supabase, com a autorização expressa do usuário para o projeto "DB Aprova Luvi", e **só neste projeto**.
+
+1. **Pré-conferência (somente leitura):** nenhuma das colunas/funções novas existia, `decide_via_link` existia, `approval_requests` e `decisions` com **0 linhas** (nada a migrar).
+2. **D1:** texto colado conferido no navegador por SHA-256 antes de executar (`a58f7d39…c4ae0`, 13987 bytes). O painel avisou "operações destrutivas" (o `drop index` e o `drop policy` esperados); confirmado. Resultado: *Success. No rows returned.* Conferência: 2 colunas novas, índice novo presente e antigo ausente, `INSERT` de `authenticated` em `approval_requests` falso (tabela e colunas), `submit_for_approval` executável por `authenticated` e não por `anon`, `app.version_content` sem `EXECUTE`.
+3. **D2:** mesmo procedimento (`a099ab39…bd51b`, 14400 bytes); aviso pelo `drop function decide_via_link`, esperado; *Success. No rows returned.* Conferência: as cinco funções do fluxo por link com `EXECUTE` para `service_role` e não para `authenticated`/`anon`; `decide_via_link` inexistente.
+4. **`verify.sql`** (30 blocos, cada um dentro de `select count(*) from (…)`, texto de 15028 bytes conferido por SHA-256 `d1ed8647…ada7`): **30 blocos, 0 com violação, total 0**.
+5. Nenhum dado foi criado nem alterado (as migrations não inserem linhas) e nenhum e-mail foi enviado. O app ainda precisa de `APPROVAL_LINK_SECRET`, `SUPABASE_SECRET_KEY` e provedor de e-mail no ambiente para o fluxo por link, e a validação operacional com dados fictícios (`MODULO-4.md`, seção 7) continua pendente.

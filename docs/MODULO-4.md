@@ -1,6 +1,6 @@
 # Módulo 4 — Motor de aprovação
 
-Estado em **2026-11-04**: implementado e testado **localmente** (branch `fase-2`). As migrations D1/D2 **não estão aplicadas** no Supabase (`MIGRACOES-D.md`), então nada aqui foi exercitado contra um banco real. Testes: Vitest 836, E2E 121 (incluindo 11 do motor de aprovação).
+Estado em **2026-11-04**: implementado e testado **localmente** (branch `fase-2`). As migrations D1/D2 foram **aplicadas no projeto de desenvolvimento em 2026-11-04** (`MIGRACOES-D.md`, seção 6; `verify.sql` 30/30 em 0), mas o fluxo **ainda não foi exercitado de ponta a ponta contra o Supabase real** (falta a validação operacional da seção 7). Testes: Vitest 836, E2E 121 (incluindo 11 do motor de aprovação).
 
 ## 1. Fluxo
 
