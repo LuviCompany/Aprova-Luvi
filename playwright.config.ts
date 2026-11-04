@@ -21,11 +21,17 @@ const CLEAN_ENV = {
   APP_URL: "",
   NEXT_PUBLIC_APP_URL: "",
   APROVA_DEMO_MODE: "",
+  APPROVAL_LINK_SECRET: "",
+  EMAIL_PROVIDER: "",
+  E2E_SIMULATED_EMAIL: "",
+  RESEND_API_KEY: "",
+  EMAIL_FROM: "",
 };
 
 const DEMO_PORT = 3100;
 const REAL_PORT = 3101;
 const CRUD_PORT = 3102; // modo real + servidor falso de Auth/PostgREST (e2e/support/mock-supabase.mjs)
+const APPROVAL_PORT = 3103; // mesmo servidor falso, com chave secreta, segredo do link e e-mail simulado (aprovação por link)
 const MOCK_PORT = 59998;
 
 export default defineConfig({
@@ -78,6 +84,13 @@ export default defineConfig({
       dependencies: ["arquivos-real"],
       use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${CRUD_PORT}` },
     },
+    {
+      // Mesmo servidor falso: roda por último (estado compartilhado).
+      name: "aprovacao-real",
+      testMatch: /aprovacao.spec.ts/,
+      dependencies: ["dashboard-real"],
+      use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${APPROVAL_PORT}` },
+    },
   ],
   webServer: [
     {
@@ -96,6 +109,22 @@ export default defineConfig({
         SUPABASE_URL: `http://127.0.0.1:${MOCK_PORT}`,
         SUPABASE_PUBLISHABLE_KEY: "sb_publishable_" + "x".repeat(30),
         APP_URL: `http://localhost:${CRUD_PORT}`,
+      },
+    },
+    {
+      command: `npx next start -p ${APPROVAL_PORT}`,
+      url: `http://localhost:${APPROVAL_PORT}/login`,
+      reuseExistingServer: true,
+      timeout: 120_000,
+      env: {
+        ...CLEAN_ENV,
+        SUPABASE_URL: `http://127.0.0.1:${MOCK_PORT}`,
+        SUPABASE_PUBLISHABLE_KEY: "sb_publishable_" + "x".repeat(30),
+        SUPABASE_SECRET_KEY: "sb_secret_" + "y".repeat(30),
+        APP_URL: `http://localhost:${APPROVAL_PORT}`,
+        APPROVAL_LINK_SECRET: "segredo-de-teste-do-link-" + "z".repeat(20),
+        EMAIL_PROVIDER: "simulated",
+        E2E_SIMULATED_EMAIL: "true", // só vale com APP_URL de localhost (src/lib/env.ts)
       },
     },
     {

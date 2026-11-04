@@ -175,6 +175,16 @@ describe("aprovação por link: segredo e provedor de e-mail", () => {
     expect(prod.kind).toBe("none");
   });
 
+  it("o simulado em produção só passa no teste de ponta a ponta: flag explícita E APP_URL de localhost", () => {
+    const prod = { EMAIL_PROVIDER: "simulated", NODE_ENV: "production" };
+    expect(getEmailProviderConfig(env({ ...prod, E2E_SIMULATED_EMAIL: "true", APP_URL: "http://localhost:3103" }))).toEqual({ kind: "simulated" });
+    // a flag sozinha, ou com domínio público, ou com valor diferente de "true", não abre nada
+    expect(getEmailProviderConfig(env({ ...prod, E2E_SIMULATED_EMAIL: "true" })).kind).toBe("none");
+    expect(getEmailProviderConfig(env({ ...prod, E2E_SIMULATED_EMAIL: "true", APP_URL: "https://aprova.luvicompany.com.br" })).kind).toBe("none");
+    expect(getEmailProviderConfig(env({ ...prod, E2E_SIMULATED_EMAIL: "1", APP_URL: "http://localhost:3103" })).kind).toBe("none");
+    expect(getEmailProviderConfig(env({ ...prod, APP_URL: "http://localhost:3103" })).kind).toBe("none");
+  });
+
   it("resend exige chave e remetente; sem provedor configurado nada é enviado", () => {
     expect(getEmailProviderConfig(env({ EMAIL_PROVIDER: "resend" })).kind).toBe("none");
     expect(getEmailProviderConfig(env({ EMAIL_PROVIDER: "resend", RESEND_API_KEY: "re_x" })).kind).toBe("none");

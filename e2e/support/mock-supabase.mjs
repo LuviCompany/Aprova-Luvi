@@ -22,6 +22,7 @@
  */
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
+import { handleApproval } from "./mock-approval.mjs";
 
 const PORT = 59998;
 const ORG = "0b8f2a6e-5d8c-4a3e-9f57-2f1a3c4d5e6f";
@@ -34,7 +35,7 @@ const USERS = {
 };
 const byId = (id) => Object.entries(USERS).find(([, u]) => u.id === id);
 
-const fresh = () => ({ clients: [], projects: [], approvers: [], invites: [], materials: [], versions: [], files: [], contents: [], requests: [], decisions: [], objects: {}, tokens: {} });
+const fresh = () => ({ clients: [], projects: [], approvers: [], invites: [], materials: [], versions: [], files: [], contents: [], requests: [], decisions: [], links: [], verifications: [], sessions: [], comments: [], objects: {}, tokens: {} });
 let tick = 0;
 const stamp = () => new Date(Date.UTC(2026, 10, 3, 12, 0, tick++)).toISOString();
 let state = fresh();
@@ -182,9 +183,19 @@ function handleStorage(req, res, url, path) {
   }
   const rest = path.replace("/storage/v1/", "");
   const m = /^object\/(upload\/sign|sign)\/materials\/(.+)$/.exec(rest);
+  const secret = /^Bearer sb_secret_/.test(req.headers.authorization ?? "");
   const staff = (() => {
+    if (secret) return { role: "service" };
     const w = actor(req);
-    return w && w.role !== "cliente" ? w : null;
+    if (w && w.role !== "cliente") return w;
+    // aprovador do portal: lê arquivo de empresa em que tem vínculo ativo e que já foi enviado
+    if (w && rest.startsWith("object/sign/materials/")) {
+      const objectPath = decodeURIComponent(rest.slice("object/sign/materials/".length));
+      const file = state.files.find((f) => f.storage_path === objectPath);
+      const linked = file && state.approvers.some((a) => a.profile_id === w.id && a.active && a.client_id === file.client_id);
+      if (linked && state.requests.some((r) => r.version_id === file.version_id)) return w;
+    }
+    return null;
   })();
 
   return (async () => {
@@ -246,21 +257,28 @@ function handleStorage(req, res, url, path) {
 
 
 /** Congela o conteúdo apresentado de uma versão (cópia imutável), como a função do banco. */
+function contentOf(version) {
+  const m = state.materials.find((x) => x.id === version.material_id);
+  return {
+    title: m.title, description: m.description, caption: m.caption, type: m.type, aspect_ratio: m.aspect_ratio,
+    channel: m.channel, publish_date: m.publish_date, due_date: m.due_date,
+    files: state.files.filter((x) => x.version_id === version.id).sort((a, b) => a.slide_position - b.slide_position)
+      .map((x) => ({ position: x.slide_position, kind: x.kind, mime_type: x.mime_type, original_name: x.original_name, size_bytes: x.size_bytes, checksum_sha256: x.checksum_sha256 })),
+  };
+}
+
 function freezeVersion(version) {
   if (state.contents.some((c) => c.version_id === version.id)) return;
-  const m = state.materials.find((x) => x.id === version.material_id);
   state.contents.push({
     version_id: version.id,
     material_id: version.material_id,
+    client_id: version.client_id,
     frozen_at: stamp(),
-    content: {
-      title: m.title, description: m.description, caption: m.caption, type: m.type, aspect_ratio: m.aspect_ratio,
-      channel: m.channel, publish_date: m.publish_date, due_date: m.due_date,
-      files: state.files.filter((x) => x.version_id === version.id).sort((a, b) => a.slide_position - b.slide_position)
-        .map((x) => ({ position: x.slide_position, kind: x.kind, mime_type: x.mime_type, original_name: x.original_name, size_bytes: x.size_bytes, checksum_sha256: x.checksum_sha256 })),
-    },
+    content: contentOf(version),
   });
 }
+
+const helpers = () => ({ raise, rlsError, matches, stamp, freezeVersion, contentOf, clientOf });
 
 /** Cria a próxima versão como o gatilho do banco (congela a anterior e devolve o material a rascunho). */
 function createVersion(material, note, userId, viaRevision = false) {
@@ -293,6 +311,10 @@ async function handle(req, res) {
   const params = [...url.searchParams.entries()];
 
   if (path === "/__health") return send(res, 200, { ok: true });
+  if (path.startsWith("/__approval/")) {
+    await handleApproval({ state, req, res, url, path, params, table: "", who: null, service: false, readBody, send, h: helpers() });
+    return;
+  }
   if (path === "/__reset") {
     state = fresh();
     return send(res, 200, { ok: true });
@@ -316,7 +338,11 @@ async function handle(req, res) {
     }
     for (const c of body.contents ?? []) state.contents.push({ frozen_at: stamp(), ...c });
     for (const d of body.decisions ?? []) state.decisions.push({ id: randomUUID(), via: "portal", approver_name: "Aprovador Teste", requested_at: null, ...d });
-    for (const r of body.requests ?? []) state.requests.push({ id: randomUUID(), ...r });
+    for (const r of body.requests ?? []) {
+      const version = state.versions.find((v) => v.id === r.version_id);
+      // padrões de uma solicitação já respondida: os testes antigos só informam a versão
+      state.requests.push({ id: randomUUID(), status: "decidida", approver_id: "00000000-0000-4000-8000-0000000000aa", submission_id: randomUUID(), due_at: null, message: "", created_at: stamp(), material_id: version?.material_id, client_id: version?.client_id, ...r });
+    }
     return send(res, 200, { ok: true });
   }
 
@@ -344,10 +370,17 @@ async function handle(req, res) {
   if (path.startsWith("/auth/v1/")) return send(res, 404, { msg: "não implementado no mock" });
 
   // ---- PostgREST
-  const who = actor(req);
+  // A chave secreta (service_role) é usada só pelo fluxo de aprovação por link, no servidor: lê tudo, como a RLS ignorada.
+  const service = /^Bearer sb_secret_/.test(req.headers.authorization ?? "");
+  const who = service ? { id: null, role: "admin", name: "service", email: "", service: true } : actor(req);
   if (!who) return send(res, 401, { code: "PGRST301", message: "JWT inválido" });
   const canManage = who.role === "admin" || who.role === "atendimento";
   const isStaff = who.role !== "cliente";
+
+  const approvalCtx = { state, req, res, url, path, params, table: path.replace("/rest/v1/", ""), who, service, readBody, send, h: helpers() };
+  if (path.startsWith("/rest/v1/rpc/") && req.method === "POST") {
+    if (await handleApproval(approvalCtx)) return;
+  }
 
   // RPCs (funções do banco imitadas)
   if (path.startsWith("/rest/v1/rpc/") && req.method === "POST") {
@@ -415,6 +448,7 @@ async function handle(req, res) {
   }
 
   const table = path.replace("/rest/v1/", "");
+  if (await handleApproval({ ...approvalCtx, table })) return;
 
   if (table === "profiles" && req.method === "GET") {
     const row = { id: who.id, full_name: who.name, email: who.email, role: who.role, organization_id: ORG, active: true };

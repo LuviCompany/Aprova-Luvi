@@ -146,6 +146,14 @@ export function requireLinkSecret(env: NodeJS.ProcessEnv = process.env): string 
   return secret;
 }
 
+function isLocalAppUrl(env: NodeJS.ProcessEnv): boolean {
+  try {
+    return isLocalHost(new URL(first(env.APP_URL, env.NEXT_PUBLIC_APP_URL) ?? "").hostname);
+  } catch {
+    return false;
+  }
+}
+
 export type EmailProviderConfig =
   | { kind: "simulated" }
   | { kind: "resend"; apiKey: string; from: string }
@@ -159,7 +167,10 @@ export type EmailProviderConfig =
 export function getEmailProviderConfig(env: NodeJS.ProcessEnv = process.env): EmailProviderConfig {
   const kind = env.EMAIL_PROVIDER?.trim().toLowerCase();
   if (kind === "simulated") {
-    return isProductionEnv(env)
+    // Exceção ÚNICA para o teste de ponta a ponta (que roda `next start`, ou seja, NODE_ENV=production):
+    // exige a variável explícita E um APP_URL de localhost. Um ambiente real (https, domínio público) nunca a satisfaz.
+    const e2e = env.E2E_SIMULATED_EMAIL === "true" && isLocalAppUrl(env);
+    return isProductionEnv(env) && !e2e
       ? { kind: "none", reason: "O provedor simulado de e-mail não é permitido em produção." }
       : { kind: "simulated" };
   }
