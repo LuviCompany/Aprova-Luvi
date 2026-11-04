@@ -7,6 +7,7 @@ import { ReviewScreen } from "@/components/approval/review-screen";
 import { QuickApproval } from "@/components/quick-approval";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { clientById, maskEmail, projectById, resolveLinkState } from "@/lib/domain";
+import { isPlausibleToken } from "@/lib/approval/token";
 import { isDemoMode, isSupabaseConfigured } from "@/lib/env";
 import { readSessionId } from "@/lib/link-approval/cookie";
 import { getLinkContext, loadLinkReview, resolveLink } from "@/lib/link-approval/service";
@@ -39,6 +40,14 @@ async function QuickApprovalContent({ params }: { params: PageProps<"/aprovar/[t
   const { token } = await params;
 
   if (isDemoMode()) return <DemoView token={token} />;
+  // Fora da demonstração nenhum token fictício vale; o que nem tem o formato de um token nunca chega ao banco.
+  if (!isPlausibleToken(token)) {
+    return (
+      <LinkFrame>
+        <LinkProblemCard kind="invalid" />
+      </LinkFrame>
+    );
+  }
   if (!isSupabaseConfigured() || !process.env.APPROVAL_LINK_SECRET) {
     return (
       <LinkFrame>
