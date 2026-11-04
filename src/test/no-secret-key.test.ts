@@ -18,6 +18,10 @@ const AREAS = [
   "src/components/approvers",
   "src/components/materials",
   "src/components/portal",
+  "src/components/approval",
+  "src/lib/approval",
+  "src/lib/email",
+  "src/lib/auth/portal-guard.ts",
   "src/lib/clients",
   "src/lib/approvers",
   "src/lib/materials",
@@ -48,5 +52,34 @@ describe("o painel não usa a chave secreta", () => {
     const pattern = FORBIDDEN.find((p) => String(p) === source)!;
     const offenders = files.filter((file) => pattern.test(readFileSync(file, "utf8"))).map((file) => relative(ROOT, file));
     expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * Módulo 4: o fluxo de aprovação por link é a ÚNICA exceção, porque não tem usuário logado. Só estes lugares
+ * podem importar o cliente de chave secreta; qualquer outro arquivo do app que o importe reprova aqui.
+ */
+describe("a chave secreta só aparece onde é inevitável", () => {
+  const ALLOWED = ["src/lib/link-approval/", "src/lib/supabase/admin.ts", "scripts/"];
+  const all = sourceFiles("src");
+
+  it("somente o fluxo por link (e o próprio cliente admin) importam o cliente de chave secreta", () => {
+    const users = all
+      .filter((file) => /supabase\/admin|createSupabaseAdminClient|requireSecretKey|SUPABASE_SECRET_KEY/.test(readFileSync(file, "utf8")))
+      .map((file) => relative(ROOT, file).split("\\").join("/"))
+      .filter((file) => !file.startsWith("src/lib/env.ts"));
+    const offenders = users.filter((file) => !ALLOWED.some((prefix) => file.startsWith(prefix)));
+    expect(offenders).toEqual([]);
+    expect(users.some((file) => file.startsWith("src/lib/link-approval/"))).toBe(true); // a regra não é vazia
+  });
+
+  it("páginas e ações de /aprovar não tocam a chave diretamente: passam pelo serviço do link", () => {
+    const aprovar = all
+      .map((file) => relative(ROOT, file).split("\\").join("/"))
+      .filter((file) => file.startsWith("src/app/aprovar/") && !file.includes(".test."));
+    expect(aprovar.length).toBeGreaterThan(2);
+    for (const file of aprovar) {
+      expect(readFileSync(join(ROOT, file), "utf8"), file).not.toMatch(/supabase\/admin|createSupabaseAdminClient|SUPABASE_SECRET_KEY|service_role/);
+    }
   });
 });

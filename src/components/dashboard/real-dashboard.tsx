@@ -5,7 +5,8 @@ import { PageHeader } from "@/components/page-header";
 import { StatusBadge, TypeBadge } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WeeklyChart } from "@/components/weekly-chart";
-import { computeDashboardKpis, monthLabel, overdueMaterials, upcomingDeadlines, weeklyDecisions } from "@/lib/dashboard/metrics";
+import { Badge } from "@/components/ui/badge";
+import { computeDashboardKpis, groupPendingApprovals, monthLabel, overdueMaterials, upcomingDeadlines, weeklyDecisions } from "@/lib/dashboard/metrics";
 import type { DashboardData } from "@/lib/dashboard/queries";
 import { formatDate, formatDateTime, formatDuration } from "@/lib/format";
 
@@ -16,6 +17,7 @@ export function RealDashboard({ data, now }: { data: DashboardData; now: Date })
   const weekly = weeklyDecisions(decisions, now, 6);
   const overdue = overdueMaterials(materials, now);
   const upcoming = upcomingDeadlines(materials, now);
+  const waiting = groupPendingApprovals(materials, data.pending, now);
   const recentMaterials = materials.slice(0, 8);
   const recentDecisions = decisions.slice(0, 5);
   const titleOf = (id: string) => materials.find((m) => m.id === id)?.title ?? "Material";
@@ -67,6 +69,38 @@ export function RealDashboard({ data, now }: { data: DashboardData; now: Date })
           </ul>
         </section>
       )}
+
+      <section aria-labelledby="aguardando-respostas" className="mt-6">
+        <Card>
+          <CardHeader>
+            <CardTitle id="aguardando-respostas">Aguardando respostas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {waiting.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum aprovador com resposta pendente.</p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-white/10" data-testid="waiting-list">
+                {waiting.map((g) => (
+                  <li key={g.materialId} className="flex flex-wrap items-start justify-between gap-2 py-2.5 text-sm">
+                    <div className="min-w-0">
+                      <Link href={`/admin/materiais/${g.materialId}`} className="block truncate font-medium text-white underline-offset-4 hover:text-primary hover:underline">
+                        {g.title}
+                      </Link>
+                      <p className="text-xs text-muted-foreground">
+                        {g.clientName} · enviado em {formatDateTime(g.oldestAt)} · falta responder: {g.approvers.join(", ")}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                      {g.dueAt && <span>prazo {formatDate(g.dueAt)}</span>}
+                      {g.overdue && <Badge variant="outline" className="border-destructive/30 bg-destructive/10 text-destructive">Vencido</Badge>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </section>
 
       <section className="mt-6 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

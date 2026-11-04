@@ -9,6 +9,7 @@ const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}
 const data = (over: Partial<DashboardData> = {}): DashboardData => ({
   materials: [],
   decisions: [],
+  pending: [],
   activeClients: 0,
   activeProjects: 0,
   truncated: false,
@@ -64,5 +65,33 @@ describe("RealDashboard", () => {
   it("avisa quando só parte dos materiais foi lida", () => {
     render(<RealDashboard data={data({ truncated: true })} now={NOW} />);
     expect(screen.getByText(/mostrando os 1000 mais recentes/)).toBeInTheDocument();
+  });
+
+  it("acompanhamento: lista quem ainda não respondeu por material e marca o vencido", () => {
+    const material = (n: number, title: string) => ({ id: U(n), title, type: "imagem" as const, status: "aguardando" as const, clientName: "Casa Aurora", dueDate: null, createdAt: "2026-11-01T12:00:00Z" });
+    render(
+      <RealDashboard
+        data={data({
+          materials: [material(1, "Post A"), material(2, "Post B")],
+          pending: [
+            { id: U(10), materialId: U(1), approverName: "Marina", dueAt: "2026-12-01T02:59:59Z", createdAt: "2026-11-02T12:00:00Z" },
+            { id: U(11), materialId: U(1), approverName: "Ana", dueAt: "2026-12-01T02:59:59Z", createdAt: "2026-11-02T12:00:00Z" },
+            { id: U(12), materialId: U(2), approverName: "Bruno", dueAt: "2026-11-03T02:59:59Z", createdAt: "2026-11-01T12:00:00Z" },
+          ],
+        })}
+        now={NOW}
+      />,
+    );
+    const items = within(screen.getByTestId("waiting-list")).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("Post B"); // vencido primeiro
+    expect(items[0]).toHaveTextContent("Vencido");
+    expect(items[1]).toHaveTextContent("falta responder: Ana, Marina");
+    expect(items[1]).not.toHaveTextContent("Vencido");
+  });
+
+  it("sem pendências mostra o estado vazio", () => {
+    render(<RealDashboard data={data()} now={NOW} />);
+    expect(screen.getByText(/Nenhum aprovador com resposta pendente/)).toBeInTheDocument();
   });
 });

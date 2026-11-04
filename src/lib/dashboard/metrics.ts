@@ -109,3 +109,61 @@ export function overdueMaterials(materials: DashboardMaterial[], now: Date, limi
 
 export const monthLabel = (now: Date): string =>
   new Intl.DateTimeFormat("pt-BR", { timeZone: BRT, month: "long", year: "numeric" }).format(now).replace(/^./, (c) => c.toUpperCase());
+
+/** Solicitação individual ainda aberta (um aprovador que não respondeu). */
+export interface DashboardPendingRequest {
+  id: string;
+  materialId: string;
+  approverName: string;
+  /** Prazo da solicitação (timestamp) ou `null`. */
+  dueAt: string | null;
+  createdAt: string;
+}
+
+export interface PendingApprovalGroup {
+  materialId: string;
+  title: string;
+  clientName: string;
+  approvers: string[];
+  oldestAt: string;
+  dueAt: string | null;
+  overdue: boolean;
+}
+
+/**
+ * Acompanhamento de status: por material, quem ainda não respondeu. Ordem: vencidos primeiro, depois o
+ * envio mais antigo. Solicitações de materiais fora da lista (ex.: além do limite) são ignoradas.
+ */
+export function groupPendingApprovals(
+  materials: Array<Pick<DashboardMaterial, "id" | "title" | "clientName">>,
+  pending: DashboardPendingRequest[],
+  now: Date,
+): PendingApprovalGroup[] {
+  const byId = new Map(materials.map((m) => [m.id, m]));
+  const groups = new Map<string, PendingApprovalGroup>();
+  for (const request of pending) {
+    const material = byId.get(request.materialId);
+    if (!material) continue;
+    const overdue = request.dueAt !== null && Date.parse(request.dueAt) < now.getTime();
+    const current = groups.get(request.materialId);
+    if (!current) {
+      groups.set(request.materialId, {
+        materialId: material.id,
+        title: material.title,
+        clientName: material.clientName,
+        approvers: [request.approverName],
+        oldestAt: request.createdAt,
+        dueAt: request.dueAt,
+        overdue,
+      });
+    } else {
+      current.approvers.push(request.approverName);
+      if (request.createdAt < current.oldestAt) current.oldestAt = request.createdAt;
+      if (request.dueAt && (!current.dueAt || request.dueAt < current.dueAt)) current.dueAt = request.dueAt;
+      current.overdue = current.overdue || overdue;
+    }
+  }
+  return [...groups.values()]
+    .map((g) => ({ ...g, approvers: [...g.approvers].sort((a, b) => a.localeCompare(b, "pt-BR")) }))
+    .sort((a, b) => Number(b.overdue) - Number(a.overdue) || a.oldestAt.localeCompare(b.oldestAt));
+}

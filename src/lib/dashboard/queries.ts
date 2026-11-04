@@ -5,7 +5,7 @@ import { listClientOptions } from "@/lib/clients/queries";
 import { listMaterialProjectOptions } from "@/lib/materials/queries";
 import { MATERIAL_STATUSES, MATERIAL_TYPES } from "@/lib/materials/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { DashboardDecision, DashboardMaterial } from "./metrics";
+import type { DashboardDecision, DashboardMaterial, DashboardPendingRequest } from "./metrics";
 
 /**
  * Leitura do dashboard (Módulo 3, etapa E): sempre com o cliente Supabase do usuário, sob a RLS. Os limites
@@ -14,12 +14,16 @@ import type { DashboardDecision, DashboardMaterial } from "./metrics";
 
 export const DASHBOARD_MATERIALS_SELECT = "id, title, type, status, due_date, created_at, clients(name)";
 export const DASHBOARD_DECISIONS_SELECT = "id, material_id, decision, via, created_at, approvers(name), approval_requests(created_at)";
+export const DASHBOARD_PENDING_SELECT = "id, material_id, due_at, created_at, approvers(name)";
+export const PENDING_LIMIT = 1000;
 export const MATERIAL_LIMIT = 1000;
 export const DECISION_LIMIT = 500;
 
 export interface DashboardData {
   materials: DashboardMaterial[];
   decisions: DashboardDecision[];
+  /** Solicitações individuais ainda abertas (quem ainda não respondeu). */
+  pending: DashboardPendingRequest[];
   activeClients: number;
   activeProjects: number;
   truncated: boolean;
@@ -35,6 +39,14 @@ const materialRow = z.object({
   clients: z.object({ name: z.string() }).nullable(),
 });
 
+const pendingRow = z.object({
+  id: z.uuid(),
+  material_id: z.uuid(),
+  due_at: z.string().nullable(),
+  created_at: z.string(),
+  approvers: z.union([z.object({ name: z.string() }), z.array(z.object({ name: z.string() })).transform((rows) => rows[0] ?? null), z.null()]),
+});
+
 const one = <T extends z.ZodType>(schema: T) => z.union([schema, z.array(schema).transform((rows) => rows[0] ?? null), z.null()]);
 const decisionRow = z.object({
   id: z.uuid(),
@@ -48,18 +60,21 @@ const decisionRow = z.object({
 
 export async function loadDashboard(): Promise<DashboardData> {
   const supabase = await createSupabaseServerClient();
-  const [materialsResult, decisionsResult, clients, projects] = await Promise.all([
+  const [materialsResult, decisionsResult, pendingResult, clients, projects] = await Promise.all([
     supabase.from("materials").select(DASHBOARD_MATERIALS_SELECT).order("created_at", { ascending: false }).limit(MATERIAL_LIMIT),
     supabase.from("decisions").select(DASHBOARD_DECISIONS_SELECT).order("created_at", { ascending: false }).limit(DECISION_LIMIT),
+    supabase.from("approval_requests").select(DASHBOARD_PENDING_SELECT).eq("status", "aberta").order("created_at").limit(PENDING_LIMIT),
     listClientOptions(),
     listMaterialProjectOptions(),
   ]);
   if (materialsResult.error) throw new DataLoadError("os materiais", materialsResult.error.message);
   if (decisionsResult.error) throw new DataLoadError("as decisões", decisionsResult.error.message);
+  if (pendingResult.error) throw new DataLoadError("as solicitações em aberto", pendingResult.error.message);
 
   const materials = z.array(materialRow).safeParse(materialsResult.data);
   const decisions = z.array(decisionRow).safeParse(decisionsResult.data);
-  if (!materials.success || !decisions.success) throw new DataLoadError("o painel", "resposta inesperada");
+  const pending = z.array(pendingRow).safeParse(pendingResult.data);
+  if (!materials.success || !decisions.success || !pending.success) throw new DataLoadError("o painel", "resposta inesperada");
 
   return {
     materials: materials.data.map((row) => ({
@@ -79,6 +94,13 @@ export async function loadDashboard(): Promise<DashboardData> {
       via: row.via,
       at: row.created_at,
       requestedAt: row.approval_requests?.created_at ?? null,
+    })),
+    pending: pending.data.map((row) => ({
+      id: row.id,
+      materialId: row.material_id,
+      approverName: row.approvers?.name ?? "Aprovador",
+      dueAt: row.due_at,
+      createdAt: row.created_at,
     })),
     activeClients: clients.filter((c) => c.active).length,
     activeProjects: projects.filter((p) => p.status === "ativo").length,
