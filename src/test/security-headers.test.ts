@@ -19,4 +19,13 @@ describe("cabeçalhos de segurança", () => {
     // a regra específica vem DEPOIS da geral (a última vence no conflito de Referrer-Policy)
     expect(rules.indexOf(link!)).toBeGreaterThan(rules.indexOf(general));
   });
+
+  it("o log do servidor de desenvolvimento não registra argumentos de Server Functions nem as requisições de /aprovar", () => {
+    expect(nextConfig.logging).toBeDefined();
+    const logging = nextConfig.logging as { serverFunctions?: boolean; incomingRequests?: { ignore: RegExp[] } };
+    expect(logging.serverFunctions).toBe(false);
+    const ignore = logging.incomingRequests?.ignore ?? [];
+    expect(ignore.some((re) => re.test("/aprovar/aE6wEtXsJsfyQPHi6IhH00b728T5Y2YB78s4oGaxa-E"))).toBe(true);
+    expect(ignore.some((re) => re.test("/admin/materiais"))).toBe(false);
+  });
 });

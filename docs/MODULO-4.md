@@ -40,9 +40,26 @@ Nova seção **Aguardando respostas**: por material, quem ainda não respondeu, 
 - E2E (`e2e/aprovacao.spec.ts`, app em :3103 + mock `mock-approval.mjs`): ciclo envio → portal → ajuste → v2 → reenvio → aprovação por portal e por link; link revogado; código inválido (5 tentativas → bloqueio → novo código); código e link expirados; arquivo protegido.
 - O mock só dá à interface algo para reagir: **RLS, concorrência e limites reais são do banco** e estão nos testes de banco.
 
-## 7. Validação operacional pendente (depende de aplicar D1/D2 e autorização)
+## 7. Validação operacional no projeto de desenvolvimento (2026-11-04) — APROVADA
 
-Com dados fictícios no projeto de desenvolvimento: aplicar D1/D2 e rodar `verify.sql`; configurar `APPROVAL_LINK_SECRET`; usar SMTP/Resend **só com sua autorização** para um e-mail de teste; percorrer o ciclo (envio de 2 aprovadores, aprovação por portal e por link, pedido de alteração, revisão, reenvio); conferir auditoria sem dados pessoais; conferir que nenhum log do servidor contém token/código.
+Ambiente: app em `next dev` (localhost:3000) contra o projeto "DB Aprova Luvi" (D1/D2 aplicadas), `SUPABASE_SECRET_KEY` do `.env.local`, **`APPROVAL_LINK_SECRET` aleatório só na memória do processo** e **e-mail simulado** (nada enviado de verdade; os "e-mails" foram lidos em `/api/dev/outbox`). Dados **fictícios "TESTE D"**: cliente "TESTE D Casa Vento", projeto "TESTE D Campanha", aprovadores `aprovador.d1@teste.invalid` e `aprovador.d2@teste.invalid`, material "TESTE D Post de validação" (PNG de 70 bytes). Eles **permanecem no dev** e não devem ser apagados sem autorização.
+
+| # | Verificação | Resultado |
+|---|---|---|
+| 1 | Envio da v1 a 2 aprovadores: 2 solicitações individuais, material em *Aguardando*, conteúdo congelado | OK |
+| 2 | Link do aprovador 1: antes do código só aparece a empresa e o e-mail mascarado (nada do material) | OK |
+| 3 | Código errado: "Restam 4 tentativas"; código certo abre a revisão; imagem servida por URL assinada do storage privado (200, `image/png`) | OK |
+| 4 | Aprovação por link do 1º: material continua *Em andamento* (1 de 2); link vira "já utilizado" | OK (política "todos aprovam") |
+| 5 | Link do aprovador 2: 5 códigos errados (4, 3, 2, 1, 0 tentativas) e a 6ª, **mesmo com o código certo**, bloqueada; novo código logo em seguida recusado pelo intervalo de 1 min; após o intervalo, novo código aceito | OK |
+| 6 | Tela do 2º: histórico mostra o colega só como "Outro aprovador"; nota de alteração curta bloqueia o botão; nota válida envia | OK |
+| 7 | Pedido de alteração: material *Alteração solicitada*, 2 de 2 responderam, as duas decisões preservadas | OK |
+| 8 | Revisão (motivo) → v2 em rascunho → arquivo novo → reenvio só ao aprovador 2 | OK |
+| 9 | Link da v2 gerado e **revogado** pela equipe; ao abrir: "Link revogado" | OK |
+| 10 | Cancelar o envio: solicitação *Cancelada*, material volta a *Rascunho* | OK |
+| 11 | Consulta somente leitura ao banco: auditoria (`approval_link.created|revoked|verified`, `approval_request.cancelled`, `decision.recorded`, `material.submitted`, `material.revision_started`…) **sem** nome, e-mail, nota, token ou código no metadata; decisões com `ip_hash` de 64 hex e canal `link`; `code_hash`, `session_hash` e `token_hash` só em hex de 64; 3 links (2 usados, 1 revogado), 3 códigos (máx. 5 tentativas), 2 sessões, 2 conteúdos congelados | OK |
+| 12 | Log do servidor | **ACHADO, corrigido:** o `next dev` imprimia cada Server Function **com os argumentos** (token, código de 6 dígitos e a nota) e cada GET com o token no caminho. Corrigido em `next.config.ts` (`logging.serverFunctions: false` e `incomingRequests.ignore` para `/aprovar`), com teste; reconferido: nenhuma linha de `/aprovar` no novo log. Isso só afeta o terminal de desenvolvimento (em produção o log é da hospedagem: ver seção 8). |
+
+**Não coberto:** decisão **no portal** com login de aprovador (exige um usuário de papel *cliente* com senha, que o assistente não cria nem digita) — a regra está nos testes de banco e no E2E com mock; envio **real** de e-mail (Resend não configurado; nenhum e-mail real foi enviado). Aviso do Next em desenvolvimento ("Base UI ... nativeButton") vindo do botão "Voltar ao início" (`render={<Link />}`), anterior ao módulo e sem efeito funcional.
 
 ## 8. Limites e riscos conhecidos
 
