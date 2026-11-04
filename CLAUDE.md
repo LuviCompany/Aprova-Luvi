@@ -33,7 +33,7 @@ Três ambientes:
 
 **Etapa B (cadastro de materiais) implementada em 2026-11-04 (commits `13ce79a` e `c9a81f2`) e com as migrations `20261104120000` e `20261104120100` (B1 e B2) APLICADAS em 2026-11-05** (`docs/MODULO-3.md`, seção 12; `docs/MIGRACOES-B.md`): `/admin/materiais` (lista, filtros, paginação, diálogo de cadastro e edição, exclusão de rascunho vazio) e `/admin/materiais/[id]` leem e gravam no banco real; no modo demonstração seguem fictícias. Conteúdo do material (título, descrição, legenda, canal, proporção) é travado no banco fora de rascunho; material aprovado só muda de estado pela operação explícita de revisão (`start_material_revision`, etapa D), que exige um **tíquete** (`app.revision_tickets`, vinculado a material, transação e usuário, emitido só por `app.grant_revision_ticket`, sem `EXECUTE` para a API); o antigo sinal `app.revision_in_progress` foi removido por ser forjável.
 
-**Módulo 4** (solicitações, aprovação no portal, link seguro com código, comentários, decisões reais) **não iniciado**. Enquanto isso, o dashboard, os materiais, o histórico, os usuários e o portal **ainda leem `src/lib/mock/`**: essas telas mostram o aviso de dados de demonstração (`MockDataNotice`) fora do modo demonstração. Fora do modo demonstração, `/aprovar/[token]` responde sempre "link inválido".
+**Módulo 4 (Motor de Aprovação) IMPLEMENTADO LOCALMENTE em 2026-11-04** (`docs/MODULO-4.md`; migrations `docs/MIGRACOES-D.md`): envio com vários aprovadores (solicitação individual por aprovador, política "todos aprovam; qualquer alteração leva a ajustes"), portal autenticado real (dashboard por situação, revisão com slides e conteúdo congelado, comentários, decisão, histórico, arquivos por rota protegida), aprovação por link sem login com código de 6 dígitos (HMAC), sessão curta, limites e revogação, reenvio após revisão e acompanhamento no dashboard. **As migrations D1 (`20261106120000`) e D2 (`20261106120100`) NÃO estão aplicadas em nenhum projeto Supabase**: dependem de autorização e de `verify.sql` (30 blocos). Testes: Vitest 836, E2E 121. O que ainda lê `src/lib/mock/` fora da demonstração: só a tela de usuários (`MockDataNotice`). Sem SMTP/Resend configurado o código do link não é enviado (provedor `simulated` só fora de produção).
 
 **Pendências conhecidas (detalhes em `docs/CHECKLIST-LANCAMENTO.md`):** recuperação de senha por e-mail **ainda não testada** (precisa de SMTP próprio com o Resend: `docs/EMAIL-RESEND.md`); timeouts de conexão do ambiente de desenvolvimento são da **rede local** (`docs/DIAGNOSTICO-REDE.md`, `npm run net:check`); não existe projeto Supabase de produção; a `main` (demonstração publicada) tem o defeito do menu do usuário já corrigido na `fase-2`.
 
@@ -69,7 +69,7 @@ npm run lint         # ESLint
 npm run typecheck    # next typegen + tsc --noEmit
 npm test             # Vitest: unitários, componentes e banco (PGlite)
 npm run test:db      # só os testes de banco/RLS (src/test/db)
-npm run test:e2e     # build + Playwright: demo em :3100 (desktop+celular), modo real em :3101 e modo real com servidor FALSO de Auth/PostgREST em :3102 (e2e/support/mock-supabase.mjs)
+npm run test:e2e     # build + Playwright: demo em :3100 (desktop+celular), modo real em :3101, modo real com servidor FALSO de Auth/PostgREST em :3102 (e2e/support/mock-supabase.mjs) e :3103 (mesmo mock + chave secreta, segredo do link e e-mail simulado: aprovacao.spec.ts)
 npm run check        # lint + typecheck + testes (rodar antes de entregar)
 npm run env:check    # confere variáveis de ambiente sem abrir conexão nem imprimir chaves
 npm run net:check    # diagnostica timeouts: conexões TCP ao Supabase vs. destinos de controle (sem chaves)
@@ -104,11 +104,15 @@ src/lib/materials/  materiais (etapa B): validação, consultas sob RLS, campos 
 src/components/materials/  diálogo de cadastro/edição, filtros, lista, exclusão de rascunho, upload, slides, histórico de versões e revisão
 src/lib/dashboard/  métricas puras (data por parâmetro) e consultas do dashboard real
 src/app/admin/arquivos/[fileId]/route.ts  visualização protegida de arquivos (redireciona para URL assinada de 60 s)
+src/lib/approval/   motor de aprovação (usuário, RLS): schema, token, revisão (conteúdo congelado), consultas do portal e da equipe
+src/lib/link-approval/  fluxo do link sem login (ÚNICO uso da chave secreta): service, HMAC, cookie de sessão, limites
+src/lib/email/      provedor de e-mail (resend | simulated, recusado em produção)
+src/components/approval/  revisão (slides, decisão, histórico), diálogo de envio, painel de acompanhamento, verificação do link
 src/lib/supabase/   server.ts (usuário, RLS), admin.ts (service_role, só servidor), proxy.ts (renovação de sessão)
 src/proxy.ts        primeira barreira: anônimo em /admin, /portal, /redefinir-senha vai ao /login
 src/test/db/        harness PGlite + testes de esquema, RLS, isolamento e aprovação
 supabase/           migrations SQL, preflight.sql (banco vazio?), verify.sql (auditoria pós-migration), config.toml e modelos de e-mail
-scripts/            bootstrap-admin.mjs (primeiro administrador, roda uma vez; já usado no dev), check-env.mjs, check-network.mjs
+scripts/            safe-commit.sh (commit com varredura de segredos; só `.env.example` entre os `.env*`), bootstrap-admin.mjs (primeiro administrador, roda uma vez; já usado no dev), check-env.mjs, check-network.mjs
 docs/SUPABASE.md    passo a passo de configuração e variáveis
 docs/VALIDACAO-FASE-2.md     registro da validação (testes manuais do usuário x automatizados)
 docs/DIAGNOSTICO-REDE.md     timeouts de conexão: evidências, causa (rede local) e o que fazer
@@ -118,6 +122,8 @@ docs/MODULO-3.md            plano por etapas (A–F), critérios de aceite, resu
 docs/MIGRACOES-A2.md        migrations da A.2: conteúdo, hashes, riscos, procedimento seguro e rollback
 docs/MIGRACOES-B.md         migrations da etapa B (materiais): conteúdo, hashes, procedimento seguro e reversão
 docs/MIGRACOES-C.md         migrations das etapas C/D (arquivos, versões, revisão): conteúdo, hashes, procedimento e reversão
+docs/MODULO-4.md            motor de aprovação: fluxo, política, link com código, e-mail, testes e validação pendente
+docs/MIGRACOES-D.md         migrations D1/D2 (NÃO aplicadas): conteúdo, hashes, procedimento e reversão
 docs/AUDITORIA.md           o que a auditoria grava (sem dados pessoais) e a política de retenção proposta
 e2e/                testes Playwright
 public/brand/       logo e favicon copiados do site institucional
@@ -154,13 +160,14 @@ Origem: `Site-Luvi` (`CLAUDE.md` e `assets/css`). Tema **único e escuro**, toke
 
 ## Banco de dados e autenticação (Fase 2)
 
-- **Migrations são imutáveis depois de aplicadas** em qualquer projeto Supabase: mudança = nova migration. **As oito primeiras já estão aplicadas no projeto de desenvolvimento (2026-11-02 e 2026-11-03): não edite os arquivos, crie uma migration nova** (as doze estão aplicadas no projeto de desenvolvimento; `verify.sql` tem 28 blocos) (e rode `verify.sql` depois). Toda alteração em `supabase/migrations/` exige `npm run test:db` verde, com teste novo para a regra alterada.
+- **Migrations são imutáveis depois de aplicadas** em qualquer projeto Supabase: mudança = nova migration. **As oito primeiras já estão aplicadas no projeto de desenvolvimento (2026-11-02 e 2026-11-03): não edite os arquivos, crie uma migration nova** (as doze primeiras estão aplicadas no projeto de desenvolvimento, com `verify.sql` de 28 blocos; **D1 e D2 do Módulo 4 existem só localmente**, sem aplicar, e elevam o `verify.sql` para 30 blocos) (e rode `verify.sql` depois). Toda alteração em `supabase/migrations/` exige `npm run test:db` verde, com teste novo para a regra alterada.
 - **Função nova = `revoke execute on function … from public, anon;` na própria migration** (o Postgres abre EXECUTE a PUBLIC por padrão e isso não dá para desligar globalmente). `privileges.test.ts` audita o catálogo e reprova qualquer função/tabela/política fora da lista permitida; `supabase/verify.sql` é a mesma auditoria para rodar no projeto real.
 - Modelo: `organizations` → `profiles` (1:1 com `auth.users`, papel `admin|designer|atendimento|cliente`) → `clients` → `approvers` (vínculo opcional a um perfil de login) → `projects` → `materials` → `material_versions` (imutáveis) → `material_files` (um por slide) → `approval_requests` → `approval_links` (só o **hash** do token) → `comments` / `decisions` (imutáveis) / `audit_events`.
 - Todas as tabelas de negócio carregam `client_id`; FKs compostas impedem filho apontando para pai de outro cliente. Nada tem `ON DELETE CASCADE`: arquivar é `active = false`.
 - RLS ligada em tudo; `anon` não tem acesso a tabela nenhuma; `authenticated` recebe grants mínimos por coluna (ex.: o status do material e o `token_hash` não são graváveis/legíveis pelo app). Segredos (`approval_verifications`, `approval_link_sessions`) só o `service_role` acessa.
 - **Telas reais do painel (Módulo 3):** leitura em `src/lib/clients/queries.ts` e escrita em Server Actions com `authorizeStaff()` (`src/lib/auth/action-guard.ts`), sempre com o cliente Supabase **do usuário** (RLS). **Nunca importar `src/lib/supabase/admin` nessas áreas** (`src/test/no-secret-key.test.ts` reprova). Tela que passa a ler o banco **deixa de renderizar `<MockDataNotice />`** e nunca importa `src/lib/mock` fora do modo demonstração; `organization_id` e `created_by` vêm da sessão do servidor, nunca do formulário.
-- Mudanças de estado de aprovação só por funções SQL (`decide_as_approver`, `decide_via_link`, `create_approval_link`, `revoke_approval_link`, `cancel_approval_request`); `decide_via_link` é só do servidor.
+- Mudanças de estado de aprovação só por funções SQL (D1/D2): `submit_for_approval` (o `INSERT` direto em `approval_requests` foi revogado), `decide_as_approver`, `create_approval_link`, `revoke_approval_link`, `cancel_approval_request` (cancela a rodada) e, **só para o servidor**, `link_resolve`, `link_issue_code`, `link_verify_code`, `link_session_context` e `decide_with_link_session` (a antiga `decide_via_link` foi removida). `app.record_decision` é o único que grava decisão (trava material → solicitação).
+- **Chave secreta só no fluxo por link:** `src/lib/link-approval/` é o ÚNICO código do app que importa `supabase/admin`; páginas e ações de `/aprovar` passam por ele (`no-secret-key.test.ts` reprova o resto). Token, código e sessão nunca vão para log; o banco guarda só SHA-256 (token) e HMAC (código, sessão, IP).
 - Triggers `BEFORE` rodam antes da RLS: qualquer um que leia dados de outro cliente deve checar `app.staff_can_access` primeiro (já foi um vazamento real, coberto em `rls.test.ts`).
 - **Não há cadastro livre.** Perfis são criados só pelo servidor (service_role) após convite; o signup do Supabase Auth fica desligado.
 - Autorização em duas camadas: `proxy.ts` (barra anônimos) e a DAL (`requireStaff`/`requireClientUser`/`requireAdmin`), sempre dentro de `<Suspense>` e com `await connection()` para ser decidida por requisição. Server Actions e Route Handlers chamam a DAL; nunca confiam só no proxy.
