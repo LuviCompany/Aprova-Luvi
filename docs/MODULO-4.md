@@ -77,7 +77,7 @@ Conta de teste: "TESTE D Aprovador Portal" (e-mail do próprio usuário), criada
 
 **Falha e correção (item 2).** `/portal` mostrava "Algo deu errado". Causa real: `listPortalMaterials` e `getPortalMaterial` aninhavam `approval_requests` direto em `materials`; **não existe chave estrangeira entre as duas** (a solicitação se liga à versão) e o Supabase respondeu `PGRST200`. Sessão, perfil e RLS estavam corretos. Correção: as solicitações vêm aninhadas em `material_versions` (a RLS continua entregando só as do aprovador). Prevenção: `src/test/db/postgrest-embeds.test.ts` confere no catálogo das migrations que **todo aninhamento dos selects do app existe como FK**; o mock do E2E agora recusa o aninhamento direto, como o PostgREST; o portal ganhou `error.tsx` com código de referência (`digest`).
 
-**Observações:** (a) a decisão pelo portal não grava `ip_hash` nem user-agent (só a decisão por link grava); a identidade vem da sessão autenticada. (b) Um aprovador consegue ler, no banco, nome e e-mail dos **outros aprovadores do mesmo cliente** (política `approvers` do portal); o app não usa isso, mas é dado pessoal visível dentro da mesma empresa: restringir exige migration (decisão pendente). (c) o bloqueio de material de outra empresa com material enviado foi exercitado depois, na seção 7.2.
+**Observações:** (a) a decisão pelo portal não grava `ip_hash` nem user-agent (só a decisão por link grava); a identidade vem da sessão autenticada. (b) Um aprovador conseguia ler, no banco, nome e e-mail dos **outros aprovadores do mesmo cliente**: **corrigido pela migration D3** (`MIGRACOES-D.md`, seção 7), **aplicada no dev em 2026-11-04** (agora ele lê só a própria linha). (c) o bloqueio de material de outra empresa com material enviado foi exercitado depois, na seção 7.2.
 
 ### 7.2 Isolamento com material enviado de OUTRA empresa (2026-11-04)
 
@@ -94,7 +94,7 @@ Material novo e fictício **"TESTE D2 Isolamento Casa Aurora"** (imagem de 70 by
 
 **Resultado: bloqueio confirmado.** Link ou token não foram usados nem registrados.
 
-**Privacidade, estado real (antes da D3):** a mesma consulta mostrou o aprovador lendo os **3 aprovadores do próprio cliente** — a exposição de colegas descrita na seção 7.1 **continua no projeto de dev até a D3 ser aplicada** (`MIGRACOES-D.md`, seção 7).
+**Privacidade, estado real (antes da D3):** a mesma consulta mostrou o aprovador lendo os **3 aprovadores do próprio cliente** — a exposição de colegas descrita na seção 7.1 existia até a D3, que foi **aplicada em seguida** (`MIGRACOES-D.md`, seção 7.1): o mesmo aprovador passou a ver só a própria linha (0 colegas).
 
 ## 8. Limites e riscos conhecidos
 

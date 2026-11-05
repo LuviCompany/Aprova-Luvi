@@ -55,7 +55,7 @@
 `4. **`verify.sql`** (30 blocos, cada um dentro de `select count(*) from (…)`, texto de 15028 bytes conferido por SHA-256 `d1ed8647…ada7`): **30 blocos, 0 com violação, total 0**.
 `5. Nenhum dado foi criado nem alterado (as migrations não inserem linhas) e nenhum e-mail foi enviado. O app ainda precisa de `APPROVAL_LINK_SECRET`, `SUPABASE_SECRET_KEY` e provedor de e-mail no ambiente para o fluxo por link, e a validação operacional com dados fictícios (`MODULO-4.md`, seção 7) continua pendente.
 `
-`## 7. D3 — privacidade dos aprovadores no portal (LOCAL, NÃO aplicada)
+`## 7. D3 — privacidade dos aprovadores no portal (APLICADA no dev em 2026-11-04)
 `
 `Arquivo `20261107120000_approvers_portal_own_rows.sql` · SHA-256 `745455e87824aa0e6e63107de8de651a90c14e4d544a84a4b75ee7aa8e80b4cb` (1104 bytes, LF) · `verify.sql` passa a ter **31 blocos** (SHA-256 `c914030df99bf8ba1bb81c4c32d4e05f5acea698530d2b8a60ebaf8da7781729`, 14855 bytes).
 `
@@ -68,3 +68,13 @@
 `**Testes locais:** \`src/test/db/approvers-privacy.test.ts\` (7): não lê nome/e-mail/cargo/profile_id de colegas (só-link, inativo, outro com login), aprovador de duas empresas vê as duas linhas dele e nada mais, vínculo como o portal usa, desativado/arquivado some, equipe e outra agência/anônimo, e decidir/comentar seguem funcionando. Os testes **falham sem a D3** (4 de 7) e passam com ela; suíte de banco 321/321.
 `
 `**Aplicação (quando autorizada):** como as anteriores: conferir projeto e hash, aplicar, depois \`verify.sql\` (31 blocos, todos em 0). Reversão: recriar a política original (\`client_id in (select app.my_client_ids())\`), o que **reabre** a exposição.
+
+### 7.1 Registro da aplicação da D3 no projeto de desenvolvimento (2026-11-04)
+
+Executada no SQL Editor do projeto "DB Aprova Luvi" (`kswnwootbdzlhdvbhhpk`), com autorização expressa do usuário, **só neste projeto**.
+
+1. **Pré-conferência (somente leitura):** política `approvers_select_portal` com o texto antigo (`client_id IN (SELECT app.my_client_ids())`), 5 aprovadores, 4 políticas em `approvers`.
+2. **D3:** SQL colado conferido por SHA-256 no navegador antes de executar (`745455e8…80b4cb`, 1104 bytes). O painel avisou "operações destrutivas" (o `drop policy` esperado); confirmado. *Success. No rows returned.*
+3. **Leitura como o aprovador de teste** (somente leitura, `role authenticated` + `uid` dele): vê **só a própria linha** de `approvers` (colegas visíveis: **0**, antes eram 3); o resto segue igual (cliente TESTE D, 1 material, 3 versões, 4 decisões do cliente, 2 solicitações próprias, 3 objetos de storage do próprio cliente, `app.my_client_ids()` = 1, `app.my_approver_id(cliente)` = o aprovador dele); material da outra empresa: 0.
+4. **`verify.sql`** (31 blocos, texto de 15493 bytes conferido por SHA-256 `296fe8c1…76e58`): **31 blocos, 0 com violação, total 0**.
+5. Nenhum dado foi criado nem alterado (a migration só troca a política) e nenhum e-mail foi enviado.
