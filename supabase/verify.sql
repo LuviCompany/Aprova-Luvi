@@ -257,3 +257,11 @@ where not exists (
   select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
   where c.relname = 'material_version_contents' and g.tgname = 'version_contents_immutable' and not g.tgisinternal
 );
+
+-- CHECK: aprovador do portal lendo linhas de outros aprovadores (a política precisa restringir ao próprio profile_id)
+select 'approvers_select_portal ausente ou sem restrição ao próprio profile_id' as problema
+where not exists (
+  select 1 from pg_policies
+  where schemaname = 'public' and tablename = 'approvers' and policyname = 'approvers_select_portal'
+    and qual like '%profile_id%'
+);
