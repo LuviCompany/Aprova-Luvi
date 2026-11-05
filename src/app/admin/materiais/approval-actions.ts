@@ -7,6 +7,7 @@ import { dueDateToTimestamp, submitSchema } from "@/lib/approval/schema";
 import { LINK_VALIDITY_DAYS, approvalLinkUrl, generateToken, hashToken } from "@/lib/approval/token";
 import { authorizeStaff } from "@/lib/auth/action-guard";
 import { sendEmail } from "@/lib/email/provider";
+import { approvalLinkEmail } from "@/lib/email/templates";
 
 export interface ApprovalActionResult {
   ok?: boolean;
@@ -92,8 +93,7 @@ export async function createApprovalLinkAction(requestId: string, approverId: st
   if (url && approver?.email) {
     const result = await sendEmail({
       to: approver.email,
-      subject: "Material para aprovação · Aprova Luvi",
-      text: `Olá, ${approver.name}!\n\nHá um material da Luvi Company esperando a sua aprovação.\nAbra o link abaixo (vale por ${LINK_VALIDITY_DAYS} dias):\n\n${url}\n\nPor segurança, você receberá um código por e-mail para confirmar que é você.`,
+      ...approvalLinkEmail({ name: approver.name, url, validityDays: LINK_VALIDITY_DAYS }),
     });
     emailSent = result.ok;
   }

@@ -88,8 +88,9 @@ export type InviteStatusValue = "preparado" | "enviado" | "aceito" | "revogado" 
 
 /** Estado de acesso de um aprovador, a partir do login ligado e do convite em aberto (se houver). */
 export function accessStatus(hasLogin: boolean, openInvite: InviteStatusValue | null): AccessStatus {
-  if (hasLogin) return "login";
+  // Convite enviado e ainda não aceito vale mais que "login": o acesso foi criado, mas a pessoa ainda não definiu a senha.
   if (openInvite === "enviado") return "convite_enviado";
+  if (hasLogin) return "login";
   if (openInvite === "preparado") return "convite_preparado";
   return "so_link";
 }

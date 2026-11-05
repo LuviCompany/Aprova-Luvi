@@ -6,12 +6,14 @@ const saveApproverAction = vi.fn();
 const setApproverActiveAction = vi.fn();
 const linkApproverAction = vi.fn();
 const prepareInviteAction = vi.fn();
+const sendInviteAction = vi.fn();
 const cancelInviteAction = vi.fn();
 vi.mock("@/app/admin/clientes/[id]/actions", () => ({
   saveApproverAction: (...a: unknown[]) => saveApproverAction(...a),
   setApproverActiveAction: (...a: unknown[]) => setApproverActiveAction(...a),
   linkApproverAction: (...a: unknown[]) => linkApproverAction(...a),
   prepareInviteAction: (...a: unknown[]) => prepareInviteAction(...a),
+  sendInviteAction: (...a: unknown[]) => sendInviteAction(...a),
   cancelInviteAction: (...a: unknown[]) => cancelInviteAction(...a),
 }));
 
@@ -25,7 +27,7 @@ const APPROVER = "9b2c6f6a-3f1e-4c53-8d57-6a5c0c0f7a11";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  for (const fn of [saveApproverAction, setApproverActiveAction, linkApproverAction, prepareInviteAction, cancelInviteAction]) {
+  for (const fn of [saveApproverAction, setApproverActiveAction, linkApproverAction, prepareInviteAction, sendInviteAction, cancelInviteAction]) {
     fn.mockResolvedValue({ ok: true });
   }
 });
@@ -124,6 +126,7 @@ describe("ApproverCard", () => {
     hasLogin: false,
     access: "so_link",
     inviteId: null,
+    inviteStatus: null,
     alsoApprovesFor: ["Vita Nutri", "Brisa Modas"],
   };
 
@@ -155,7 +158,7 @@ describe("ApproverCard", () => {
 
   it("convite preparado oferece cancelar; cliente arquivado não oferece preparar", () => {
     const { rerender } = render(
-      <ApproverCard approver={{ ...approver, access: "convite_preparado", inviteId: "i1" }} canManage clientActive />,
+      <ApproverCard approver={{ ...approver, access: "convite_preparado", inviteId: "i1", inviteStatus: "preparado" }} canManage clientActive />,
     );
     expect(screen.getByText("Convite preparado (não enviado)")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancelar convite de Marina Prado" })).toBeInTheDocument();
@@ -182,7 +185,7 @@ describe("ApproverCard", () => {
     await waitFor(() => expect(prepareInviteAction).toHaveBeenCalledWith(APPROVER));
     unmount();
 
-    render(<ApproverCard approver={{ ...approver, access: "convite_preparado", inviteId: "i1" }} canManage clientActive />);
+    render(<ApproverCard approver={{ ...approver, access: "convite_preparado", inviteId: "i1", inviteStatus: "preparado" }} canManage clientActive />);
     await userEvent.click(screen.getByRole("button", { name: "Cancelar convite de Marina Prado" }));
     await userEvent.click(await screen.findByRole("button", { name: "Cancelar convite" }));
     await waitFor(() => expect(cancelInviteAction).toHaveBeenCalledWith("i1"));

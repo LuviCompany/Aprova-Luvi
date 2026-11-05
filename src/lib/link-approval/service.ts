@@ -4,6 +4,7 @@ import { loadReview, type ReviewData } from "@/lib/approval/review";
 import { hashToken, isPlausibleToken } from "@/lib/approval/token";
 import { requireLinkSecret } from "@/lib/env";
 import { sendEmail } from "@/lib/email/provider";
+import { verificationCodeEmail } from "@/lib/email/templates";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { CODE_PATTERN, SESSION_ID_PATTERN, codeHash, generateCode, generateSessionId, ipHash, sessionHash } from "./crypto";
 import { allow } from "./rate-limit";
@@ -75,11 +76,8 @@ export async function issueCode(token: string, clientIp: string): Promise<IssueC
   if (!parsed.success) return fail();
   if (parsed.data.status !== "ok") return { status: parsed.data.status };
 
-  const sent = await sendEmail({
-    to: parsed.data.email,
-    subject: "Seu código de verificação · Aprova Luvi",
-    text: `Olá, ${parsed.data.approver_name}!\n\nSeu código de verificação é: ${code}\n\nEle vale por 10 minutos. Se você não pediu este código, ignore esta mensagem.`,
-  });
+  const content = verificationCodeEmail({ name: parsed.data.approver_name, code, validityMinutes: 10 });
+  const sent = await sendEmail({ to: parsed.data.email, ...content });
   if (!sent.ok) return { status: sent.reason === "not_configured" ? "email_unavailable" : "email_failed" };
   return { status: "sent" };
 }

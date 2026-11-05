@@ -21,6 +21,8 @@ export interface ApproverItem {
   access: AccessStatus;
   /** Convite em aberto (preparado ou enviado), se houver. */
   inviteId: string | null;
+  /** Convite em aberto: preparado (não enviado) ou enviado (aguardando o aprovador criar a senha). */
+  inviteStatus: "preparado" | "enviado" | null;
   /** Outros clientes em que a mesma pessoa aprova (vínculos ativos). */
   alsoApprovesFor: string[];
 }
@@ -123,6 +125,7 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
         hasLogin: a.profile_id !== null,
         access: accessStatus(a.profile_id !== null, (invite?.status ?? null) as InviteStatusValue | null),
         inviteId: invite?.id ?? null,
+        inviteStatus: invite?.status ?? null,
         alsoApprovesFor: also.get(a.email.trim().toLowerCase()) ?? [],
       };
     }),

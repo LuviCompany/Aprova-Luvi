@@ -55,6 +55,8 @@ describe("parseApproverInput", () => {
 describe("accessStatus", () => {
   it("login vence; senão o convite em aberto; senão só por link", () => {
     expect(accessStatus(true, "preparado")).toBe("login");
+    expect(accessStatus(true, "enviado")).toBe("convite_enviado"); // acesso criado, senha ainda não definida
+    expect(accessStatus(true, "aceito")).toBe("login");
     expect(accessStatus(false, "preparado")).toBe("convite_preparado");
     expect(accessStatus(false, "enviado")).toBe("convite_enviado");
     expect(accessStatus(false, null)).toBe("so_link");

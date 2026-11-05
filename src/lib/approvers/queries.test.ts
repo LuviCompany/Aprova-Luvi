@@ -81,8 +81,8 @@ describe("getClientDetail", () => {
     const detail = await getClientDetail(C1);
     expect(detail?.client).toEqual(client);
     expect(detail?.approvers).toEqual([
-      { id: A1, name: "Marina Prado", email: "marina@x.com", jobTitle: "Marketing", active: true, hasLogin: true, access: "login", inviteId: null, alsoApprovesFor: ["Vita Nutri"] },
-      { id: A2, name: "Paulo Aurora", email: "paulo@x.com", jobTitle: "", active: true, hasLogin: false, access: "convite_preparado", inviteId: P1, alsoApprovesFor: [] },
+      { id: A1, name: "Marina Prado", email: "marina@x.com", jobTitle: "Marketing", active: true, hasLogin: true, access: "login", inviteId: null, inviteStatus: null, alsoApprovesFor: ["Vita Nutri"] },
+      { id: A2, name: "Paulo Aurora", email: "paulo@x.com", jobTitle: "", active: true, hasLogin: false, access: "convite_preparado", inviteId: P1, inviteStatus: "preparado", alsoApprovesFor: [] },
     ]);
   });
 

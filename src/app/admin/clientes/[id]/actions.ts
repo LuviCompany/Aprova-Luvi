@@ -5,6 +5,7 @@ import { z } from "zod";
 import { authorizeStaff } from "@/lib/auth/action-guard";
 import { parseApproverInput } from "@/lib/approvers/schema";
 import { messageForDbError } from "@/lib/clients/errors";
+import { sendApproverInvite } from "@/lib/invites/service";
 import type { FieldErrors } from "@/lib/clients/schema";
 
 export interface ApproverFormState {
@@ -112,6 +113,32 @@ export async function prepareInviteAction(approverId: string): Promise<ApproverF
 
   const { error } = await guard.supabase.rpc("prepare_approver_invite", { p_approver_id: approverId });
   if (error) return { error: messageForDbError(error, "convite") };
+
+  refresh();
+  return { ok: true };
+}
+
+/**
+ * Envia (ou reenvia) o convite: cria o acesso ao portal e manda o e-mail com o link para a pessoa criar a PRÓPRIA senha.
+ * Só admin e atendimento. A RLS do usuário confere que o aprovador é visível; o resto o servidor revalida no banco.
+ * O link não volta à tela nem vai para log.
+ */
+export async function sendInviteAction(approverId: string): Promise<ApproverFormState> {
+  const guard = await authorizeStaff({ manageClients: true });
+  if (!guard.ok) return { error: guard.error };
+  if (!isUuid(approverId)) return { error: "Aprovador inválido." };
+
+  const visible = await guard.supabase.from("approvers").select("id").eq("id", approverId).maybeSingle();
+  if (visible.error) return { error: messageForDbError(visible.error, "convite") };
+  if (!visible.data) return { error: "Aprovador não encontrado." };
+
+  let result;
+  try {
+    result = await sendApproverInvite(approverId);
+  } catch {
+    return { error: "Não foi possível enviar o convite agora. Tente novamente." };
+  }
+  if (!result.ok) return { error: result.error };
 
   refresh();
   return { ok: true };

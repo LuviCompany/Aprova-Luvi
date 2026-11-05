@@ -17,11 +17,15 @@ export interface OutboundEmail {
   to: string;
   subject: string;
   text: string;
+  /** Versão HTML (opcional). O texto simples vai sempre junto. */
+  html?: string;
+  /** Evita envio duplicado se a chamada for repetida (cabeçalho Idempotency-Key do Resend). */
+  idempotencyKey?: string;
 }
 
 export type SendResult =
   | { ok: true; provider: "simulated" | "resend" }
-  | { ok: false; reason: "not_configured" | "failed" };
+  | { ok: false; reason: "not_configured" | "rate_limited" | "rejected" | "failed" };
 
 interface Outbox {
   messages: Array<OutboundEmail & { at: string }>;
@@ -49,11 +53,25 @@ export async function sendEmail(message: OutboundEmail, env: NodeJS.ProcessEnv =
   try {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { authorization: `Bearer ${config.apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ from: config.from, to: [message.to], subject: message.subject, text: message.text }),
+      headers: {
+        authorization: `Bearer ${config.apiKey}`,
+        "content-type": "application/json",
+        ...(message.idempotencyKey ? { "idempotency-key": message.idempotencyKey } : {}),
+      },
+      body: JSON.stringify({
+        from: config.from,
+        to: [message.to],
+        subject: message.subject,
+        text: message.text,
+        ...(message.html ? { html: message.html } : {}),
+      }),
       signal: AbortSignal.timeout(10_000),
     });
-    return response.ok ? { ok: true, provider: "resend" } : { ok: false, reason: "failed" };
+    if (response.ok) return { ok: true, provider: "resend" };
+    // 429: limite do Resend (tentar mais tarde). Outros 4xx: pedido recusado (remetente/domínio/endereço): não adianta repetir.
+    if (response.status === 429) return { ok: false, reason: "rate_limited" };
+    if (response.status >= 400 && response.status < 500) return { ok: false, reason: "rejected" };
+    return { ok: false, reason: "failed" };
   } catch {
     return { ok: false, reason: "failed" };
   }

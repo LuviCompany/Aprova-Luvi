@@ -18,6 +18,7 @@ export function demoClientDetail(clientId: string): ClientDetail | null {
       hasLogin: false,
       access: accessStatus(false, null),
       inviteId: null,
+      inviteStatus: null,
       alsoApprovesFor: [],
     })),
     linkCandidates: [],

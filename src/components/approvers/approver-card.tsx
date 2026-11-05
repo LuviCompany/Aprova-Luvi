@@ -48,8 +48,14 @@ export function ApproverCard({ approver, canManage, clientActive }: ApproverCard
               mode="edit"
               approver={{ id: approver.id, name: approver.name, email: approver.email, jobTitle: approver.jobTitle }}
             />
-            {approver.active && !approver.hasLogin && (approver.inviteId || clientActive) && (
-              <InviteButton approverId={approver.id} name={approver.name} inviteId={approver.inviteId} />
+            {approver.active && (approver.inviteStatus === "enviado" || (!approver.hasLogin && (approver.inviteId || clientActive))) && (
+              <InviteButton
+                approverId={approver.id}
+                name={approver.name}
+                email={approver.email}
+                inviteId={approver.inviteId}
+                inviteStatus={approver.inviteStatus}
+              />
             )}
             <ApproverActiveButton id={approver.id} name={approver.name} active={approver.active} />
           </div>

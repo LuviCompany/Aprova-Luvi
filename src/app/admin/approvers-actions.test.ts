@@ -60,6 +60,9 @@ vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () =
 vi.mock("@/lib/supabase/admin", () => {
   throw new Error("as ações do painel não podem usar o cliente de chave secreta");
 });
+const sendApproverInvite = vi.fn();
+// O serviço de convite usa a chave secreta (por isso fica fora do painel); aqui só se prova o que a AÇÃO decide.
+vi.mock("@/lib/invites/service", () => ({ sendApproverInvite: (...args: unknown[]) => sendApproverInvite(...args) }));
 const getSessionState = vi.fn();
 vi.mock("@/lib/auth/session", () => ({ getSessionState: () => getSessionState() }));
 const revalidatePath = vi.fn();
@@ -70,6 +73,7 @@ import {
   linkApproverAction,
   prepareInviteAction,
   saveApproverAction,
+  sendInviteAction,
   setApproverActiveAction,
 } from "@/app/admin/clientes/[id]/actions";
 
@@ -257,5 +261,42 @@ describe("convites (sem envio de e-mail e sem token)", () => {
     expect((await cancelInviteAction(INVITE)).error).toMatch(/não está mais em aberto/);
     expect((await prepareInviteAction("x")).error).toMatch(/inválido/);
     expect((await cancelInviteAction("x")).error).toMatch(/inválido/);
+  });
+});
+
+describe("sendInviteAction (envio do convite pelo app)", () => {
+  it("só admin e atendimento; designer, aprovador e anônimo não chegam ao serviço", async () => {
+    for (const papel of ["designer", "cliente"]) {
+      getSessionState.mockResolvedValue(session(papel));
+      expect((await sendInviteAction(APPROVER)).error, papel).toMatch(/permissão/);
+    }
+    getSessionState.mockResolvedValue({ kind: "anonymous" });
+    expect((await sendInviteAction(APPROVER)).error).toMatch(/expirou/);
+    expect(sendApproverInvite).not.toHaveBeenCalled();
+  });
+
+  it("valida o id, confere sob a RLS que o aprovador é visível e só então chama o serviço", async () => {
+    getSessionState.mockResolvedValue(session("admin"));
+    expect((await sendInviteAction("x")).error).toMatch(/inválido/);
+    respond = () => ({ data: null, error: null });
+    expect((await sendInviteAction(APPROVER)).error).toMatch(/não encontrado/);
+    expect(sendApproverInvite).not.toHaveBeenCalled();
+
+    respond = () => ({ data: { id: APPROVER }, error: null });
+    sendApproverInvite.mockResolvedValue({ ok: true, mode: "sent" });
+    expect(await sendInviteAction(APPROVER)).toEqual({ ok: true });
+    expect(sendApproverInvite).toHaveBeenCalledWith(APPROVER);
+    expect(revalidatePath).toHaveBeenCalled();
+  });
+
+  it("devolve a mensagem do serviço e esconde falhas inesperadas (sem vazar detalhes)", async () => {
+    getSessionState.mockResolvedValue(session("atendimento"));
+    respond = () => ({ data: { id: APPROVER }, error: null });
+    sendApproverInvite.mockResolvedValueOnce({ ok: false, error: "O envio de e-mail não está configurado neste ambiente." });
+    expect((await sendInviteAction(APPROVER)).error).toMatch(/e-mail não está configurado/);
+    sendApproverInvite.mockRejectedValueOnce(new Error("SUPABASE_SECRET_KEY inválida"));
+    const result = await sendInviteAction(APPROVER);
+    expect(result.error).toMatch(/Tente novamente/);
+    expect(result.error).not.toMatch(/SECRET/);
   });
 });

@@ -5,6 +5,7 @@ import { classifyAuthError, MESSAGES } from "@/lib/auth/errors";
 import { validateNewPassword } from "@/lib/auth/password";
 import { getSessionState } from "@/lib/auth/session";
 import { isSupabaseConfigured } from "@/lib/env";
+import { markInviteAccepted } from "@/lib/invites/service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export interface ResetPasswordState {
@@ -44,6 +45,9 @@ export async function updatePasswordAction(
         return { error: "Não foi possível alterar a senha. Peça um novo link." };
     }
   }
+
+  // Convite enviado a um aprovador vira "aceito" (melhor esforço: a senha já foi trocada).
+  if (state.user.role === "cliente") await markInviteAccepted(state.user.id);
 
   // Encerra todas as sessões (inclusive de outros dispositivos) e pede novo login.
   await supabase.auth.signOut({ scope: "global" });

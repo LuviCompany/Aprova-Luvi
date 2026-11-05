@@ -60,7 +60,7 @@ describe("o painel não usa a chave secreta", () => {
  * podem importar o cliente de chave secreta; qualquer outro arquivo do app que o importe reprova aqui.
  */
 describe("a chave secreta só aparece onde é inevitável", () => {
-  const ALLOWED = ["src/lib/link-approval/", "src/lib/supabase/admin.ts", "scripts/"];
+  const ALLOWED = ["src/lib/link-approval/", "src/lib/invites/", "src/lib/supabase/admin.ts", "scripts/"];
   const all = sourceFiles("src");
 
   it("somente o fluxo por link (e o próprio cliente admin) importam o cliente de chave secreta", () => {
@@ -71,6 +71,7 @@ describe("a chave secreta só aparece onde é inevitável", () => {
     const offenders = users.filter((file) => !ALLOWED.some((prefix) => file.startsWith(prefix)));
     expect(offenders).toEqual([]);
     expect(users.some((file) => file.startsWith("src/lib/link-approval/"))).toBe(true); // a regra não é vazia
+    expect(users.some((file) => file.startsWith("src/lib/invites/"))).toBe(true);
   });
 
   it("páginas e ações de /aprovar não tocam a chave diretamente: passam pelo serviço do link", () => {
