@@ -1,5 +1,7 @@
 # Recuperação de senha e SMTP com o Resend — o que falta
 
+> **Atualização (2026-11-04):** o app já envia **convites, links de aprovação e códigos** pelo Resend (`EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `EMAIL_FROM`), com modelos próprios e erros tratados; o convite de aprovador é enviado pelo painel. Falta **testar com um e-mail real** (com a sua autorização) e configurar o **SMTP do Supabase Auth** para a recuperação de senha. Passo a passo de produção: `docs/PRODUCAO.md`.
+
 Estado em **2026-11-02**. Objetivo: e-mails de **recuperação de senha** e **convite** do Supabase Auth saindo pelo Resend, em português e com a identidade Luvi, para qualquer destinatário.
 
 Convenção: **[Você]** = ação no painel/DNS por conta do usuário; **[Eu]** = o assistente pode fazer, se autorizado.

@@ -35,6 +35,8 @@ Três ambientes:
 
 **Módulo 4 (Motor de Aprovação) IMPLEMENTADO LOCALMENTE em 2026-11-04** (`docs/MODULO-4.md`; migrations `docs/MIGRACOES-D.md`): envio com vários aprovadores (solicitação individual por aprovador, política "todos aprovam; qualquer alteração leva a ajustes"), portal autenticado real (dashboard por situação, revisão com slides e conteúdo congelado, comentários, decisão, histórico, arquivos por rota protegida), aprovação por link sem login com código de 6 dígitos (HMAC), sessão curta, limites e revogação, reenvio após revisão e acompanhamento no dashboard. **As migrations D1 (`20261106120000`) e D2 (`20261106120100`) foram APLICADAS no projeto de desenvolvimento em 2026-11-04** (uma por vez, SHA-256 conferido; `verify.sql` 30/30 em 0; registro em `docs/MIGRACOES-D.md`, seção 6); **validação operacional com dados fictícios aprovada** (`docs/MODULO-4.md`, seção 7; dados "TESTE D" permanecem no dev, não apagar sem autorização); falta a decisão no portal com login real de aprovador e o envio real de e-mail. Testes: Vitest 836, E2E 121. O que ainda lê `src/lib/mock/` fora da demonstração: só a tela de usuários (`MockDataNotice`). Sem SMTP/Resend configurado o código do link não é enviado (provedor `simulated` só fora de produção).
 
+**Preparação para o lançamento (2026-11-04; `docs/PRODUCAO.md` e seção 0 do `docs/CHECKLIST-LANCAMENTO.md`):** convite e ativação de aprovadores **pelo painel** (Preparar → Enviar/Reenviar convite; o aprovador cria a própria senha; `src/lib/invites/`), Resend com modelos e erros classificados (`src/lib/email/`), `npm run env:check:prod`, CSP no proxy (`src/lib/security-headers.ts`), teste de isolamento por catálogo, D3 (aprovador lê só a própria linha de `approvers`) e `scripts/cleanup-storage-orphans.mjs` (relatório por padrão). **Nada publicado; o banco de produção não existe; nenhuma migration fora do projeto de dev.**
+
 **Pendências conhecidas (detalhes em `docs/CHECKLIST-LANCAMENTO.md`):** recuperação de senha por e-mail **ainda não testada** (precisa de SMTP próprio com o Resend: `docs/EMAIL-RESEND.md`); timeouts de conexão do ambiente de desenvolvimento são da **rede local** (`docs/DIAGNOSTICO-REDE.md`, `npm run net:check`); não existe projeto Supabase de produção; a `main` (demonstração publicada) tem o defeito do menu do usuário já corrigido na `fase-2`.
 
 ### Modo demonstração x modo real
@@ -106,7 +108,9 @@ src/lib/dashboard/  métricas puras (data por parâmetro) e consultas do dashboa
 src/app/admin/arquivos/[fileId]/route.ts  visualização protegida de arquivos (redireciona para URL assinada de 60 s)
 src/lib/approval/   motor de aprovação (usuário, RLS): schema, token, revisão (conteúdo congelado), consultas do portal e da equipe
 src/lib/link-approval/  fluxo do link sem login (ÚNICO uso da chave secreta): service, HMAC, cookie de sessão, limites
-src/lib/email/      provedor de e-mail (resend | simulated, recusado em produção)
+src/lib/email/      provedor de e-mail (resend | simulated, recusado em produção) e modelos HTML/texto escapados (convite, link, código)
+src/lib/invites/    convite e ativação de aprovadores pelo painel (usa a chave secreta, só no servidor)
+src/lib/storage/    limpeza segura de arquivos órfãos (lógica pura; script em scripts/)
 src/components/approval/  revisão (slides, decisão, histórico), diálogo de envio, painel de acompanhamento, verificação do link
 src/lib/supabase/   server.ts (usuário, RLS), admin.ts (service_role, só servidor), proxy.ts (renovação de sessão)
 src/proxy.ts        primeira barreira: anônimo em /admin, /portal, /redefinir-senha vai ao /login
@@ -122,6 +126,7 @@ docs/MODULO-3.md            plano por etapas (A–F), critérios de aceite, resu
 docs/MIGRACOES-A2.md        migrations da A.2: conteúdo, hashes, riscos, procedimento seguro e rollback
 docs/MIGRACOES-B.md         migrations da etapa B (materiais): conteúdo, hashes, procedimento seguro e reversão
 docs/MIGRACOES-C.md         migrations das etapas C/D (arquivos, versões, revisão): conteúdo, hashes, procedimento e reversão
+docs/PRODUCAO.md            guia de produção: Supabase separado, Auth, Resend, Vercel, variáveis, teste de fumaça e revisão de segurança
 docs/MODULO-4.md            motor de aprovação: fluxo, política, link com código, e-mail, testes e validação pendente
 docs/MIGRACOES-D.md         migrations D1/D2 (NÃO aplicadas): conteúdo, hashes, procedimento e reversão
 docs/AUDITORIA.md           o que a auditoria grava (sem dados pessoais) e a política de retenção proposta

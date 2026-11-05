@@ -4,6 +4,30 @@ Estado em **2026-11-02**, ao fim da validação da Fase 2 (Módulos 1 e 2). Lege
 
 > Regra de ouro: **nada vai para produção sem autorização expressa**. A produção atual é a demonstração da Fase 1 (branch `main`, `aprova.luvicompany.com.br`).
 
+## 0. Preparação para o lançamento (2026-11-04) — leia esta seção primeiro
+
+O sistema está **tecnicamente pronto para configuração**; **nada foi publicado, o banco de produção não existe e nenhuma migration foi aplicada fora do projeto de desenvolvimento**. O passo a passo completo está em `docs/PRODUCAO.md`.
+
+**Preparado no código (testado):** convite e ativação de aprovadores pelo painel (sem terminal); Resend com modelos HTML/texto, idempotência e erros classificados; `npm run env:check:prod` (avisos viram erros); CSP montada em tempo de execução; teste de isolamento dirigido pelo catálogo (toda tabela com `client_id`, storage e segredos do link); aprovador lê só a própria linha de `approvers` (D3); script de limpeza segura de arquivos órfãos; guia de produção e revisão de segurança.
+
+**O que VOCÊ precisa fazer (nesta ordem):**
+
+| # | Ação | Onde |
+|---|---|---|
+| L1 | Criar o projeto Supabase de **produção** (novo, plano Pro, região São Paulo) e guardar as chaves | Supabase |
+| L2 | Aplicar as 15 migrations **uma por vez** + `verify.sql` (31 blocos em 0), conforme `PRODUCAO.md` seção 2 (posso aplicar com a sua autorização expressa) | SQL Editor |
+| L3 | Configurar a autenticação: sem cadastro livre, URLs de produção, validade do link de e-mail **24 h**, senha forte e proteção contra senha vazada, SMTP do Resend, modelos de e-mail, MFA nos administradores | Supabase Auth |
+| L4 | Resend: domínio verificado (SPF/DKIM/DMARC), chave **só de envio**, remetente do domínio (`docs/EMAIL-RESEND.md`) | Resend/DNS |
+| L5 | Vercel: variáveis de produção (`PRODUCAO.md` seção 6), domínio, e `npm run env:check:prod` terminando em "Configuração válida" | Vercel |
+| L6 | Criar o primeiro administrador **no seu terminal** (`bootstrap-admin`, uma vez). Depois, tudo pelo painel | Terminal |
+| L7 | Teste de fumaça com **um e-mail real seu** (convite + código do link), com a sua autorização | App publicado |
+| L8 | Confirmar backups/PITR e **testar uma restauração**; definir quem acompanha logs | Supabase/Vercel |
+| L9 | LGPD: aviso de privacidade, retenção e política de exclusão (itens 10 e 11 da seção B) | Jurídico |
+
+**Operações remotas pendentes:** criar o projeto de produção (L1), aplicar migrations e configurações (L2, L3), publicar (L5). **Nenhuma foi feita.**
+
+**Riscos de lançamento conhecidos:** (1) o e-mail real (Resend) ainda **nunca foi chamado de verdade**: o teste L7 é obrigatório; (2) sem teste de restauração de backup; (3) o token do link rápido fica no caminho da URL e pode aparecer nos logs da hospedagem (o token sozinho não aprova; não use *log drain* com URL completa de `/aprovar/*`); (4) a recuperação de senha depende do SMTP do Supabase (L3) e nunca foi testada com e-mail real; (5) o limite de tentativas de **login** é só o do Supabase Auth; (6) CSP com `unsafe-inline` nos scripts (o Next precisa), sem nonce.
+
 ## A. Segurança — já garantido
 
 - [x] RLS ligada em 15 de 15 tabelas; `anon` sem nenhum privilégio de tabela ou coluna (`supabase/verify.sql`, 16 blocos com 0 linhas, no projeto real).
