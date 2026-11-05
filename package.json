@@ -14,6 +14,7 @@
     "check": "npm run lint && npm run typecheck && npm run test",
     "test:db": "vitest run src/test/db",
     "env:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/check-env.mjs",
+    "env:check:prod": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/check-env.mjs --production",
     "net:check": "node --env-file-if-exists=.env.local scripts/check-network.mjs"
   },
   "dependencies": {

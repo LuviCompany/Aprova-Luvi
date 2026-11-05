@@ -194,7 +194,8 @@ export interface EnvDiagnosis {
 }
 
 /** Diagnóstico para `npm run env:check`. Nunca devolve o valor de uma chave. */
-export function diagnoseEnv(env: NodeJS.ProcessEnv = process.env): EnvDiagnosis {
+export function diagnoseEnv(env: NodeJS.ProcessEnv = process.env, options: { production?: boolean } = {}): EnvDiagnosis {
+  const production = options.production ?? env.NODE_ENV === "production";
   const errors: string[] = [];
   const warnings: string[] = [];
   const url = env.SUPABASE_URL?.trim();
@@ -251,6 +252,25 @@ export function diagnoseEnv(env: NodeJS.ProcessEnv = process.env): EnvDiagnosis 
   }
   if (env.APROVA_DEMO_MODE === "true" && getSupabaseConfig(env)) {
     warnings.push("APROVA_DEMO_MODE=true será ignorado porque o Supabase está configurado.");
+  }
+
+  // Lançamento: o que é só aviso em desenvolvimento vira ERRO aqui (npm run env:check -- --production).
+  if (production) {
+    if (!sec) errors.push("SUPABASE_SECRET_KEY é obrigatória em produção (convites, links de aprovação e URLs assinadas).");
+    if ((env.APPROVAL_LINK_SECRET?.trim().length ?? 0) < 32) errors.push("APPROVAL_LINK_SECRET (mínimo 32 caracteres) é obrigatória em produção.");
+    if (env.EMAIL_PROVIDER?.trim().toLowerCase() !== "resend" || emailConfig.kind !== "resend") {
+      errors.push("Em produção o e-mail precisa ser EMAIL_PROVIDER=resend, com RESEND_API_KEY e EMAIL_FROM (o provedor simulado não vale).");
+    }
+    if (env.E2E_SIMULATED_EMAIL) errors.push("E2E_SIMULATED_EMAIL não pode existir em produção (é só do teste de ponta a ponta).");
+    if (env.APROVA_DEMO_MODE === "true") errors.push("APROVA_DEMO_MODE=true não pode ficar ligado em produção.");
+    const rawSite = first(env.APP_URL, env.NEXT_PUBLIC_APP_URL);
+    try {
+      const parsed = new URL(rawSite ?? "");
+      if (parsed.protocol !== "https:" || isLocalHost(parsed.hostname)) errors.push("APP_URL de produção precisa ser https e não pode ser localhost.");
+    } catch {
+      errors.push("APP_URL ausente ou inválida (obrigatória em produção).");
+    }
+    if (url && /localhost|127.0.0.1/.test(url)) errors.push("SUPABASE_URL de produção não pode apontar para localhost.");
   }
 
   return {

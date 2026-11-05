@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isProtectedPath } from "@/lib/auth/roles";
 import { isDemoMode } from "@/lib/env";
+import { withSecurityHeaders } from "@/lib/security-headers";
 import { refreshSession } from "@/lib/supabase/proxy";
 
 /**
@@ -8,6 +9,10 @@ import { refreshSession } from "@/lib/supabase/proxy";
  * Não decide papéis: isso é da DAL (src/lib/auth/session.ts) e da RLS.
  */
 export async function proxy(request: NextRequest) {
+  return withSecurityHeaders(await handle(request));
+}
+
+async function handle(request: NextRequest) {
   if (isDemoMode()) return NextResponse.next();
 
   const { pathname, search } = request.nextUrl;
