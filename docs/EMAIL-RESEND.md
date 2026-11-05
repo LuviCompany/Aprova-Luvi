@@ -62,3 +62,14 @@ Leitura provável: o domínio `luvicompany.com.br` **já foi configurado no Rese
 - A chave do Resend vale como senha de envio: só no painel do Supabase (e depois na Vercel como Sensitive). Nunca em chat, repositório ou `.env.local` deste projeto.
 - Os e-mails do **app** (novo material, decisão tomada, lembretes) são da **Fase 3** e usarão a API do Resend com outra chave (`RESEND_API_KEY`), lida no servidor.
 - Rede instável de desenvolvimento (`docs/DIAGNOSTICO-REDE.md`) pode atrapalhar o teste ponta a ponta: use `npm run net:check` antes.
+
+## 5. Teste de envio real em desenvolvimento (`npm run email:test`)
+
+Script `scripts/send-test-email.mjs`: envia **um** e-mail de teste com assunto e conteúdo fixos (sem link, token ou código), pela mesma `sendEmail` do app. Exige `EMAIL_PROVIDER=resend`, `RESEND_API_KEY` e `EMAIL_FROM` no `.env.local` (confira antes com `npm run env:check`: precisa mostrar `emailProvider: resend`).
+
+```
+npm run email:test -- --to voce@seu-dominio.com.br
+npm run email:test -- --to voce@seu-dominio.com.br --execute --project-host <host do SUPABASE_URL>
+```
+
+O primeiro comando é **simulação** (valida a configuração, não abre conexão e não envia). O segundo envia de verdade, só com `--execute` e com o host do projeto de desenvolvimento. Recusa produção e provedor simulado; nunca imprime a chave nem o corpo da mensagem. "Aceito pelo Resend" significa que o Resend recebeu o pedido: confira a caixa de entrada, o spam e o painel do Resend (Emails).
