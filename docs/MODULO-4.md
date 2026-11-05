@@ -61,6 +61,24 @@ Ambiente: app em `next dev` (localhost:3000) contra o projeto "DB Aprova Luvi" (
 
 **Não coberto:** decisão **no portal** com login de aprovador (exige um usuário de papel *cliente* com senha, que o assistente não cria nem digita) — a regra está nos testes de banco e no E2E com mock; envio **real** de e-mail (Resend não configurado; nenhum e-mail real foi enviado). Aviso do Next em desenvolvimento ("Base UI ... nativeButton") vindo do botão "Voltar ao início" (`render={<Link />}`), anterior ao módulo e sem efeito funcional.
 
+### 7.1 Portal autenticado com login real de aprovador (2026-11-04)
+
+Conta de teste: "TESTE D Aprovador Portal" (e-mail do próprio usuário), criada por `scripts/invite-approver.mjs` rodado **no terminal do usuário** (link impresso só lá; a senha foi criada pelo usuário; o assistente não criou, definiu nem viu senha, cookie ou token). Dados fictícios "TESTE D".
+
+| # | Verificação | Resultado |
+|---|---|---|
+| 1 | Perfil `cliente` ativo, mesma organização, ligado ao aprovador, 1 vínculo ativo; convite `enviado` | OK |
+| 2 | Portal abre; dashboard por situação | **Falhou na 1ª tentativa e foi corrigido** (ver abaixo); depois OK |
+| 3 | Isolamento (consulta somente leitura com `role authenticated` e o `uid` do aprovador, no banco real): vê só o cliente "TESTE D Casa Vento", seu projeto e seu material; 0 dados do TESTE A2 e do TESTE C; 0 auditoria, 0 links | OK |
+| 4 | Material com imagem, legenda, conteúdo congelado e histórico (colegas aparecem só como "Outro aprovador") | OK (visto pelo usuário) |
+| 5 | **Solicitar alteração** pelo portal (nota curta bloqueia o botão): decisão da v2 gravada com canal `portal`, aprovador certo, sem `link_id`; material em `alteracao`; solicitação `decidida`; auditoria `decision.recorded` com o ator = aprovador e só ids | OK |
+| 6 | Painel admin refletiu: "Alteração solicitada · 1 de 1 responderam", nota e canal "portal" | OK |
+| 7 | Revisão → v3 → reenvio → **Aprovar** pelo portal: decisão da v3 `aprovado` via portal; material `aprovado`; envio "Aprovada por todos"; 3 versões congeladas; histórico completo (4 decisões); auditoria sem nome, e-mail, nota, token ou código (0 ocorrências) | OK |
+
+**Falha e correção (item 2).** `/portal` mostrava "Algo deu errado". Causa real: `listPortalMaterials` e `getPortalMaterial` aninhavam `approval_requests` direto em `materials`; **não existe chave estrangeira entre as duas** (a solicitação se liga à versão) e o Supabase respondeu `PGRST200`. Sessão, perfil e RLS estavam corretos. Correção: as solicitações vêm aninhadas em `material_versions` (a RLS continua entregando só as do aprovador). Prevenção: `src/test/db/postgrest-embeds.test.ts` confere no catálogo das migrations que **todo aninhamento dos selects do app existe como FK**; o mock do E2E agora recusa o aninhamento direto, como o PostgREST; o portal ganhou `error.tsx` com código de referência (`digest`).
+
+**Observações:** (a) a decisão pelo portal não grava `ip_hash` nem user-agent (só a decisão por link grava); a identidade vem da sessão autenticada. (b) Um aprovador consegue ler, no banco, nome e e-mail dos **outros aprovadores do mesmo cliente** (política `approvers` do portal); o app não usa isso, mas é dado pessoal visível dentro da mesma empresa: restringir exige migration (decisão pendente). (c) **Bloqueio de material de outra empresa com material já enviado** ainda não foi exercitado: não existe material enviado de outro cliente fictício (só foi provado com os dados existentes e pelos testes de banco/E2E).
+
 ## 8. Limites e riscos conhecidos
 
 - O token está no **caminho da URL**: logs de acesso da hospedagem podem registrá-lo. Mitigação: o token sozinho não basta (exige o código enviado ao e-mail do aprovador), uso único, expiração e revogação. Conferir retenção/filtros de log na hospedagem.
