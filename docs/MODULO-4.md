@@ -77,7 +77,24 @@ Conta de teste: "TESTE D Aprovador Portal" (e-mail do próprio usuário), criada
 
 **Falha e correção (item 2).** `/portal` mostrava "Algo deu errado". Causa real: `listPortalMaterials` e `getPortalMaterial` aninhavam `approval_requests` direto em `materials`; **não existe chave estrangeira entre as duas** (a solicitação se liga à versão) e o Supabase respondeu `PGRST200`. Sessão, perfil e RLS estavam corretos. Correção: as solicitações vêm aninhadas em `material_versions` (a RLS continua entregando só as do aprovador). Prevenção: `src/test/db/postgrest-embeds.test.ts` confere no catálogo das migrations que **todo aninhamento dos selects do app existe como FK**; o mock do E2E agora recusa o aninhamento direto, como o PostgREST; o portal ganhou `error.tsx` com código de referência (`digest`).
 
-**Observações:** (a) a decisão pelo portal não grava `ip_hash` nem user-agent (só a decisão por link grava); a identidade vem da sessão autenticada. (b) Um aprovador consegue ler, no banco, nome e e-mail dos **outros aprovadores do mesmo cliente** (política `approvers` do portal); o app não usa isso, mas é dado pessoal visível dentro da mesma empresa: restringir exige migration (decisão pendente). (c) **Bloqueio de material de outra empresa com material já enviado** ainda não foi exercitado: não existe material enviado de outro cliente fictício (só foi provado com os dados existentes e pelos testes de banco/E2E).
+**Observações:** (a) a decisão pelo portal não grava `ip_hash` nem user-agent (só a decisão por link grava); a identidade vem da sessão autenticada. (b) Um aprovador consegue ler, no banco, nome e e-mail dos **outros aprovadores do mesmo cliente** (política `approvers` do portal); o app não usa isso, mas é dado pessoal visível dentro da mesma empresa: restringir exige migration (decisão pendente). (c) o bloqueio de material de outra empresa com material enviado foi exercitado depois, na seção 7.2.
+
+### 7.2 Isolamento com material enviado de OUTRA empresa (2026-11-04)
+
+Material novo e fictício **"TESTE D2 Isolamento Casa Aurora"** (imagem de 70 bytes) criado no cliente **TESTE A2 Casa Aurora** e enviado ao aprovador `@teste.invalid` dele (nada preexistente foi alterado; nenhum e-mail, link ou usuário criado). Teste feito **com a sessão autenticada do aprovador TESTE D Casa Vento**, no navegador do app, e com uma consulta somente leitura sob `role authenticated` e o `uid` dele no banco real.
+
+| Verificação | Resultado |
+|---|---|
+| Início do portal do aprovador TESTE D | só o material dele; nada de Casa Aurora |
+| Página `/portal/materiais/<id da Casa Aurora>` | **"Página não encontrada — O endereço não existe ou você não tem acesso"**, idêntica à de um id inexistente; título, legenda e imagem **não vazam** (HTTP 200 pelo streaming do Next; o conteúdo é o da página 404, igual para id inexistente) |
+| Arquivo `/portal/arquivos/<id do arquivo da Casa Aurora>` | **404, corpo vazio, sem `location`**; idêntico ao de arquivo inexistente |
+| Banco (RLS): material, versões, arquivo, conteúdo congelado, solicitação, decisões, comentários e aprovador da Casa Aurora | **0 linhas** em todas |
+| Storage (`storage.objects`, bucket `materials`) | **0 objetos** da Casa Aurora; os 3 visíveis são todos do próprio cliente (`bool_and` verdadeiro) |
+| Controle positivo | o material do próprio cliente continua visível (1) |
+
+**Resultado: bloqueio confirmado.** Link ou token não foram usados nem registrados.
+
+**Privacidade, estado real (antes da D3):** a mesma consulta mostrou o aprovador lendo os **3 aprovadores do próprio cliente** — a exposição de colegas descrita na seção 7.1 **continua no projeto de dev até a D3 ser aplicada** (`MIGRACOES-D.md`, seção 7).
 
 ## 8. Limites e riscos conhecidos
 
