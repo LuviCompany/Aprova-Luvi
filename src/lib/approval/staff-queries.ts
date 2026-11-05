@@ -68,7 +68,7 @@ const requestSchema = z.object({
   ),
 });
 
-const REQUEST_SELECT =
+export const REQUEST_SELECT =
   "id, status, approver_id, submission_id, version_id, due_at, message, created_at, approvers(name, email), material_versions(number), decisions(decision, note, via, created_at), approval_links(id, expires_at, revoked_at, used_at, created_at)";
 
 export function linkStateOf(link: { expires_at: string; revoked_at: string | null; used_at: string | null }, now = Date.now()): LinkState {

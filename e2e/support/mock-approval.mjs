@@ -292,6 +292,11 @@ export async function handleApproval(c) {
 
   // leituras do portal (cliente): só o que foi enviado e é da empresa dele
   if (!isStaff && req.method === "GET") {
+    const selectText = url.searchParams.get("select") ?? "";
+    const direct = selectText.split("material_versions(")[0].includes("approval_requests(");
+    if (table === "materials" && direct) {
+      return send(res, 400, { code: "PGRST200", message: "Could not find a relationship between 'materials' and 'approval_requests' in the schema cache" }), true;
+    }
     const clients = myClientIds();
     if (table === "materials") {
       const mine = new Set(myApprovers().map((a) => a.id));
@@ -299,8 +304,13 @@ export async function handleApproval(c) {
       return send(res, 200, rows.map((m) => ({
         ...m,
         projects: { name: state.projects.find((p) => p.id === m.project_id)?.name ?? "—" },
-        material_versions: state.versions.filter((v) => v.material_id === m.id).map((v) => ({ id: v.id, number: v.number })),
-        approval_requests: state.requests.filter((r) => r.material_id === m.id && mine.has(r.approver_id)).map((r) => ({ id: r.id, status: r.status, version_id: r.version_id, due_at: r.due_at ?? null })),
+        // Como o PostgREST real: não existe chave direta de materials para approval_requests; elas vêm aninhadas na VERSÃO
+        // (e a RLS entrega só as solicitações deste aprovador). Um aninhamento direto responderia PGRST200 no Supabase.
+        material_versions: state.versions.filter((v) => v.material_id === m.id).map((v) => ({
+          id: v.id,
+          number: v.number,
+          approval_requests: state.requests.filter((r) => r.version_id === v.id && mine.has(r.approver_id)).map((r) => ({ id: r.id, status: r.status, due_at: r.due_at ?? null })),
+        })),
       }))), true;
     }
     if (table === "material_versions" || table === "material_files") {

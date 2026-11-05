@@ -31,6 +31,8 @@ export interface PortalMaterialItem {
 const MATERIAL_TYPES = ["imagem", "carrossel", "video", "pdf"] as const;
 const STATUSES = ["rascunho", "aguardando", "alteracao", "aprovado"] as const;
 
+const requestStatus = z.enum(["aberta", "decidida", "cancelada"]);
+
 const rowSchema = z.object({
   id: z.uuid(),
   title: z.string(),
@@ -39,12 +41,19 @@ const rowSchema = z.object({
   status: z.enum(STATUSES),
   due_date: z.string().nullable(),
   projects: z.object({ name: z.string() }).nullable(),
-  material_versions: z.array(z.object({ id: z.uuid(), number: z.number() })),
-  approval_requests: z.array(z.object({ id: z.uuid(), status: z.enum(["aberta", "decidida", "cancelada"]), version_id: z.uuid() })),
+  // As solicitações ficam ligadas à VERSÃO (não há chave estrangeira direta de materials para approval_requests):
+  // por isso entram aninhadas em material_versions. A RLS devolve só as solicitações DESTE aprovador.
+  material_versions: z.array(
+    z.object({
+      id: z.uuid(),
+      number: z.number(),
+      approval_requests: z.array(z.object({ id: z.uuid(), status: requestStatus })),
+    }),
+  ),
 });
 
-const SELECT =
-  "id, title, type, channel, status, due_date, projects(name), material_versions(id, number), approval_requests(id, status, version_id)";
+export const PORTAL_LIST_SELECT =
+  "id, title, type, channel, status, due_date, projects(name), material_versions(id, number, approval_requests(id, status))";
 
 export function bucketOf(status: MaterialStatus, hasOpenRequest: boolean): PortalBucket {
   if (hasOpenRequest) return "pendente";
@@ -57,7 +66,7 @@ export async function listPortalMaterials(context: PortalLink): Promise<PortalMa
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("materials")
-    .select(SELECT)
+    .select(PORTAL_LIST_SELECT)
     .eq("client_id", context.clientId)
     .order("updated_at", { ascending: false })
     .limit(500);
@@ -67,7 +76,7 @@ export async function listPortalMaterials(context: PortalLink): Promise<PortalMa
 
   return parsed.data.map((row) => {
     const latest = [...row.material_versions].sort((a, b) => b.number - a.number)[0];
-    const open = row.approval_requests.find((r) => r.status === "aberta" && r.version_id === latest?.id);
+    const open = latest?.approval_requests.find((r) => r.status === "aberta");
     return {
       id: row.id,
       title: row.title,
@@ -99,11 +108,16 @@ const detailSchema = z.object({
   id: z.uuid(),
   status: z.enum(STATUSES),
   projects: z.object({ name: z.string() }).nullable(),
-  material_versions: z.array(z.object({ id: z.uuid(), number: z.number() })),
-  approval_requests: z.array(
-    z.object({ id: z.uuid(), status: z.enum(["aberta", "decidida", "cancelada"]), version_id: z.uuid(), due_at: z.string().nullable() }),
+  material_versions: z.array(
+    z.object({
+      id: z.uuid(),
+      number: z.number(),
+      approval_requests: z.array(z.object({ id: z.uuid(), status: requestStatus, due_at: z.string().nullable() })),
+    }),
   ),
 });
+
+export const PORTAL_DETAIL_SELECT = "id, status, projects(name), material_versions(id, number, approval_requests(id, status, due_at))";
 
 /** Detalhe para revisão, ou `null` (material inexistente, de outro cliente ou ainda não enviado: iguais). */
 export async function getPortalMaterial(materialId: string, context: PortalLink): Promise<PortalMaterialDetail | null> {
@@ -111,7 +125,7 @@ export async function getPortalMaterial(materialId: string, context: PortalLink)
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("materials")
-    .select("id, status, projects(name), material_versions(id, number), approval_requests(id, status, version_id, due_at)")
+    .select(PORTAL_DETAIL_SELECT)
     .eq("id", materialId)
     .eq("client_id", context.clientId)
     .maybeSingle();
@@ -123,7 +137,7 @@ export async function getPortalMaterial(materialId: string, context: PortalLink)
 
   const latest = [...row.material_versions].sort((a, b) => b.number - a.number)[0];
   if (!latest) return null;
-  const open = row.approval_requests.find((r) => r.status === "aberta" && r.version_id === latest.id);
+  const open = latest.approval_requests.find((r) => r.status === "aberta");
   const review = await loadReview(supabase, {
     materialId: row.id,
     versionId: latest.id,
@@ -135,7 +149,7 @@ export async function getPortalMaterial(materialId: string, context: PortalLink)
     status: row.status,
     projectName: row.projects?.name ?? "—",
     myRequestId: open?.id ?? null,
-    dueAt: open ? (row.approval_requests.find((r) => r.id === open.id)?.due_at ?? null) : null,
+    dueAt: open?.due_at ?? null,
     versionId: latest.id,
     bucket: bucketOf(row.status, Boolean(open)),
     review,
@@ -163,12 +177,14 @@ const historySchema = z.object({
   material_versions: z.object({ number: z.number(), materials: z.object({ title: z.string() }).nullable() }).nullable(),
 });
 
+export const PORTAL_HISTORY_SELECT = "id, material_id, decision, via, created_at, note, material_versions(number, materials(title))";
+
 /** Decisões DESTE aprovador nesta empresa (mais recentes primeiro). */
 export async function listMyDecisions(context: PortalLink): Promise<PortalDecisionItem[]> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("decisions")
-    .select("id, material_id, decision, via, created_at, note, material_versions(number, materials(title))")
+    .select(PORTAL_HISTORY_SELECT)
     .eq("client_id", context.clientId)
     .eq("approver_id", context.approverId)
     .order("created_at", { ascending: false })
