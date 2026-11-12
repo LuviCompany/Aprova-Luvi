@@ -5,7 +5,7 @@ test.describe("login", () => {
     await page.goto("/login");
     await page.waitForLoadState("networkidle"); // espera a hidratação do formulário
     await page.getByLabel("E-mail").fill("enzo@luvicompany.com.br");
-    await page.getByLabel("Senha").fill("senha-demo");
+    await page.getByLabel("Senha", { exact: true }).fill("senha-demo");
     await page.getByRole("button", { name: "Entrar" }).click();
 
     await expect(page).toHaveURL(/\/admin$/);
@@ -32,7 +32,7 @@ test.describe("login", () => {
     await page.waitForLoadState("networkidle"); // espera a hidratação do formulário
     await page.getByRole("tab", { name: "Sou cliente" }).click();
     await page.getByLabel("E-mail").fill("marina@casaaurora.com.br");
-    await page.getByLabel("Senha").fill("senha-demo");
+    await page.getByLabel("Senha", { exact: true }).fill("senha-demo");
     await page.getByRole("button", { name: "Entrar" }).click();
     await expect(page).toHaveURL(/\/portal$/);
     await expect(page.getByRole("heading", { name: /Olá, Marina/ })).toBeVisible();

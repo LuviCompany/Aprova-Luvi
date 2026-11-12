@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react";
 import { updatePasswordAction, type ResetPasswordState } from "@/app/redefinir-senha/actions";
 import { Notice } from "@/components/auth/auth-layout";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/auth/password-input";
 import { Label } from "@/components/ui/label";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password";
 
@@ -18,10 +18,10 @@ export function ResetPasswordForm() {
       {state.error && <Notice tone="error">{state.error}</Notice>}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${id}-password`}>Nova senha</Label>
-        <Input
+        <PasswordInput
           id={`${id}-password`}
           name="password"
-          type="password"
+          subject="nova senha"
           autoComplete="new-password"
           required
           minLength={MIN_PASSWORD_LENGTH}
@@ -34,10 +34,10 @@ export function ResetPasswordForm() {
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${id}-confirm`}>Confirme a nova senha</Label>
-        <Input
+        <PasswordInput
           id={`${id}-confirm`}
           name="confirm"
-          type="password"
+          subject="confirmação da nova senha"
           autoComplete="new-password"
           required
           className="h-11"

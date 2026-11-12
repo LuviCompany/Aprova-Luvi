@@ -48,7 +48,7 @@ test.describe("login real", () => {
     await page.goto("/login");
     await page.waitForLoadState("networkidle");
     await page.getByLabel("E-mail").fill("ana@empresa.com");
-    await page.getByLabel("Senha").fill("qualquer-senha-1");
+    await page.getByLabel("Senha", { exact: true }).fill("qualquer-senha-1");
     await page.getByRole("button", { name: "Entrar" }).click();
     await expect(page.locator("p[role=alert]")).toContainText(/serviço de autenticação|incorretos/i);
     await expect(page).toHaveURL(/\/login/);
@@ -58,7 +58,7 @@ test.describe("login real", () => {
     await page.goto("/login?next=/admin");
     await page.waitForLoadState("networkidle");
     await page.getByLabel("E-mail").fill("ana@empresa.com");
-    await page.getByLabel("Senha").fill("qualquer-senha-1");
+    await page.getByLabel("Senha", { exact: true }).fill("qualquer-senha-1");
     await page.getByRole("button", { name: "Entrar" }).click();
     await expect(page.locator("p[role=alert]")).toBeVisible();
     expect(new URL(page.url()).pathname).toBe("/login");

@@ -21,7 +21,7 @@ async function login(page: Page, email = "admin@luvi.test", landing: RegExp = /\
   await page.goto("/login");
   await page.waitForLoadState("networkidle");
   await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Senha").fill("qualquer-senha-1");
+  await page.getByLabel("Senha", { exact: true }).fill("qualquer-senha-1");
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page).toHaveURL(landing);
 }

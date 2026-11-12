@@ -19,7 +19,7 @@ async function login(page: Page, email: string) {
   await page.goto("/login");
   await page.waitForLoadState("networkidle"); // espera a hidratação do formulário
   await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Senha").fill("qualquer-senha-1");
+  await page.getByLabel("Senha", { exact: true }).fill("qualquer-senha-1");
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page).toHaveURL(/\/admin$/);
 }
@@ -442,7 +442,7 @@ test.describe("etapa A.2: escolha da empresa no portal", () => {
     await page.goto("/login");
     await page.waitForLoadState("networkidle");
     await page.getByLabel("E-mail").fill(email);
-    await page.getByLabel("Senha").fill("qualquer-senha-1");
+    await page.getByLabel("Senha", { exact: true }).fill("qualquer-senha-1");
     await page.getByRole("button", { name: "Entrar" }).click();
     await expect(page).toHaveURL(/\/portal$/);
   }

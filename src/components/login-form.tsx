@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState, useId, useState, type FormEvent } from "react";
 import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
+import { PasswordInput } from "@/components/auth/password-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,10 +64,9 @@ function RealLoginForm({ next }: { next?: string }) {
             Esqueci minha senha
           </Link>
         </div>
-        <Input
+        <PasswordInput
           id={`${id}-password`}
           name="password"
-          type="password"
           autoComplete="current-password"
           required
           className="h-11"
@@ -149,9 +149,8 @@ function DemoLoginForm() {
               Esqueci minha senha
             </Link>
           </div>
-          <Input
+          <PasswordInput
             id={`${id}-password`}
-            type="password"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
