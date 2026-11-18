@@ -22,8 +22,8 @@ enable_signup = false
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 # Mesma regra do app (src/lib/auth/password.ts). No projeto em nuvem isto é configurado no painel.
-minimum_password_length = 10
-password_requirements = "letters_digits"
+minimum_password_length = 12
+password_requirements = "lower_upper_letters_digits_symbols"
 
 [auth.email]
 enable_signup = false

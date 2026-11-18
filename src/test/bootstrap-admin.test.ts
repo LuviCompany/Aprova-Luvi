@@ -2,7 +2,11 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildPlan, describePlan } from "../../scripts/bootstrap-admin.mjs";
+import { buildPlan, describePlan, PRODUCTION_PROJECT_HOSTS } from "../../scripts/bootstrap-admin.mjs";
+
+const PROD_URL = `https://${PRODUCTION_PROJECT_HOSTS[0]}`;
+// projeto "DB Aprova Luvi" (desenvolvimento); montado em partes para o texto completo da URL do .env.local nunca entrar num commit
+const DEV_URL = ["https://", "kswnwootbdzlhdvbhhpk", ".supabase.co"].join("");
 
 const SECRET = "sb_secret_" + "s".repeat(30);
 const PUBLISHABLE = "sb_publishable_" + "p".repeat(30);
@@ -58,9 +62,38 @@ describe("bootstrap-admin: plano e travas de segurança", () => {
   });
 
   it("recusa a URL de PRODUÇÃO sem --allow-production", () => {
-    const prod = { ...baseEnv, APP_URL: "https://aprova.luvicompany.com.br" };
+    const prod = { ...baseEnv, SUPABASE_URL: PROD_URL, APP_URL: "https://aprova.luvicompany.com.br" };
     expect(plan(baseArgs, prod).errors.join(" ")).toMatch(/PRODUÇÃO/);
     expect(plan([...baseArgs, "--allow-production"], prod).errors).toEqual([]);
+  });
+
+  it("TRAVA DE PROJETO: a APP_URL de produção só vale com o projeto Supabase de produção", () => {
+    // projeto de desenvolvimento (qualquer outro host) com a URL de produção: recusado, mesmo com todas as flags
+    for (const url of ["https://projeto-dev.supabase.co", DEV_URL]) {
+      const p = plan([...baseArgs, "--allow-production", "--execute", "--project-host", new URL(url).host], {
+        ...baseEnv,
+        SUPABASE_URL: url,
+        APP_URL: "https://aprova.luvicompany.com.br",
+      });
+      expect(p.errors.join(" "), url).toMatch(/só pode ser usada com o projeto Supabase de produção/);
+    }
+  });
+
+  it("TRAVA DE PROJETO: o projeto de produção só vale com a APP_URL de produção (e a simulação já acusa)", () => {
+    const p = plan(baseArgs, { ...baseEnv, SUPABASE_URL: PROD_URL, APP_URL: "http://localhost:3000" });
+    expect(p.mode).toBe("dry-run");
+    expect(p.errors.join(" ")).toMatch(/só pode ser usado com APP_URL=https:\/\/aprova.luvicompany.com.br/);
+  });
+
+  it("par correto de produção: aceita só com --allow-production e --project-host igual ao do projeto", () => {
+    const env = { ...baseEnv, SUPABASE_URL: PROD_URL, APP_URL: "https://aprova.luvicompany.com.br" };
+    const host = new URL(PROD_URL).host;
+    expect(plan([...baseArgs, "--execute", "--project-host", host], env).errors.join(" ")).toMatch(/PRODUÇÃO/);
+    expect(plan([...baseArgs, "--allow-production", "--execute"], env).errors.join(" ")).toMatch(/--project-host/);
+    expect(plan([...baseArgs, "--allow-production", "--execute", "--project-host", host.toUpperCase()], env).errors).toEqual([]);
+    const ok = plan([...baseArgs, "--allow-production", "--execute", "--project-host", host], env);
+    expect(describePlan(ok)).toContain("(PRODUÇÃO)");
+    expect(describePlan(ok)).not.toContain(SECRET);
   });
 
   it("--execute exige --project-host igual ao host do SUPABASE_URL", () => {

@@ -7,7 +7,7 @@ import { Notice } from "@/components/auth/auth-layout";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/auth/password-input";
 import { Label } from "@/components/ui/label";
-import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password";
+import { MIN_PASSWORD_LENGTH, PASSWORD_RULE_HINT } from "@/lib/auth/password";
 
 export function ResetPasswordForm() {
   const id = useId();
@@ -29,7 +29,7 @@ export function ResetPasswordForm() {
           aria-describedby={`${id}-hint`}
         />
         <p id={`${id}-hint`} className="text-xs text-muted-foreground">
-          Mínimo de {MIN_PASSWORD_LENGTH} caracteres, com letras e números.
+          {PASSWORD_RULE_HINT}
         </p>
       </div>
       <div className="flex flex-col gap-1.5">

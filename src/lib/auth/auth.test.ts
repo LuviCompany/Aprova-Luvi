@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classifyAuthError } from "@/lib/auth/errors";
-import { validateNewPassword } from "@/lib/auth/password";
+import { MIN_PASSWORD_LENGTH, PASSWORD_RULE_HINT, PASSWORD_SYMBOLS, validateNewPassword } from "@/lib/auth/password";
 import { safeNextPath } from "@/lib/auth/redirect";
 import { canAccessPath, homeForRole, isAppRole, isProtectedPath, isStaffRole } from "@/lib/auth/roles";
 
@@ -76,19 +76,39 @@ describe("safeNextPath (anti open-redirect)", () => {
 });
 
 describe("validateNewPassword", () => {
-  it("aceita senha forte", () => {
-    expect(validateNewPassword("Luvi2026segura")).toBeNull();
+  it.each(["Luvi2026segura!", "Senha-nova-2026", "Abcdefghij1#", "aB3$aB3$aB3$"])("aceita senha forte (%s)", (senha) => {
+    expect(validateNewPassword(senha)).toBeNull();
+  });
+
+  it("exige 12 caracteres, maiúscula, minúscula, número e símbolo, na mesma regra do Supabase de produção", () => {
+    expect(validateNewPassword("Abcdefgh1!x")).toMatch(/ao menos 12/); // 11 caracteres
+    expect(validateNewPassword("ABCDEFGH1234!")).toMatch(/minúscula/);
+    expect(validateNewPassword("abcdefgh1234!")).toMatch(/maiúscula/);
+    expect(validateNewPassword("Abcdefghijkl!")).toMatch(/número/);
+    expect(validateNewPassword("Abcdefghij12")).toMatch(/símbolo/);
+    expect(validateNewPassword("Abcdefghij1 ")).toMatch(/símbolo/); // espaço não é símbolo
+  });
+
+  it("todos os símbolos da política do Supabase contam como símbolo", () => {
+    for (const symbol of PASSWORD_SYMBOLS) {
+      expect(validateNewPassword(`Abcdefghij1${symbol}`), symbol).toBeNull();
+    }
   });
 
   it.each([
-    ["curta", "abc123"],
-    ["sem número", "somenteletras"],
-    ["sem letra", "1234567890123"],
-    ["repetitiva", "aaaaaaaaa1aaa"],
-    ["comum", "senha12345"],
-    ["longa demais", "a1".repeat(40)],
+    ["curta", "Abc1!"],
+    ["sem número", "Somenteletras!"],
+    ["sem letra", "1234567890123!"],
+    ["só letras e números", "Luvi2026segura"],
+    ["comum, sem símbolo", "Password1234"],
+    ["longa demais", "aB1!".repeat(20)],
   ])("rejeita senha %s", (_nome, senha) => {
     expect(validateNewPassword(senha)).not.toBeNull();
+  });
+
+  it("o texto de ajuda dos formulários descreve a mesma regra", () => {
+    expect(MIN_PASSWORD_LENGTH).toBe(12);
+    expect(PASSWORD_RULE_HINT).toMatch(/12 caracteres.*maiúsculas e minúsculas.*números e símbolos/);
   });
 });
 

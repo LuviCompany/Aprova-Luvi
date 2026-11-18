@@ -94,6 +94,12 @@ describe("telas de autenticação", () => {
     expect(confirma).toHaveAttribute("type", "text");
   });
 
+  it("redefinição/convite mostram a regra de senha de produção (12+, maiúsculas, minúsculas, números e símbolos)", () => {
+    render(<ResetPasswordForm />);
+    expect(screen.getByText(/Mínimo de 12 caracteres, com letras maiúsculas e minúsculas, números e símbolos/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Nova senha")).toHaveAttribute("minlength", "12");
+  });
+
   it("login real e login de demonstração têm o botão de mostrar senha", async () => {
     const { unmount } = render(<LoginForm mode="real" />);
     expect(screen.getByLabelText("Senha")).toHaveAttribute("type", "password");

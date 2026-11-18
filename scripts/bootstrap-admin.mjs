@@ -23,16 +23,23 @@
  *  - exige a chave SECRETA (recusa `sb_publishable_…` e a chave anon legada);
  *  - --execute exige --project-host igual ao host de SUPABASE_URL (evita rodar no projeto errado);
  *  - recusa APP_URL de produção sem --allow-production, e http fora de localhost;
- *  - só roda em banco sem perfis; nenhuma senha é criada ou exibida; a chave nunca é impressa;
- *  - o link de convite impresso é de uso único e expira (padrão do Auth: 1 hora): trate como
- *    senha, abra você mesmo e nunca cole em chat, e-mail ou ticket.
- *
- * ATENÇÃO: o modo --execute ainda NÃO foi executado contra um projeto Supabase real.
+ *  - TRAVA DE PROJETO: APP_URL de produção (aprova.luvicompany.com.br) só com o projeto Supabase de
+ *    produção, e o projeto de produção só com essa APP_URL (vale até na simulação);
+ *  - só roda em banco sem perfis; a única exceção é RETOMAR o mesmo administrador (um único perfil, mesmo
+ *    e-mail, papel admin, conta do Auth nunca ativada), caso em que só um NOVO convite é emitido;
+ *  - nenhuma senha é criada ou exibida (você a define na página do convite); a chave nunca é impressa;
+ *  - o link de convite impresso é de uso único e expira (padrão do Auth): trate como senha, abra
+ *    você mesmo e nunca cole em chat, e-mail ou ticket.
  */
 import { pathToFileURL } from "node:url";
 import { classifyKey } from "../src/lib/env.ts";
 
 export const PRODUCTION_HOSTS = ["aprova.luvicompany.com.br"];
+/**
+ * Trava de projeto: o site de produção só pode ser ligado ao projeto Supabase de produção, e vice-versa.
+ * O ID do projeto não é segredo. Sem esse par, o script recusa mesmo com --allow-production e --project-host.
+ */
+export const PRODUCTION_PROJECT_HOSTS = ["nvtiynmebffxctqlrwqo.supabase.co"]; // "Aprova Luvi - Produção"
 
 const FLAGS = new Set(["execute", "check-connection", "allow-production", "send-email"]);
 
@@ -98,6 +105,18 @@ export function buildPlan(argv, env) {
     }
   }
 
+  // Trava de projeto (vale em todos os modos, inclusive na simulação): produção com produção, resto com resto.
+  const appIsProduction = PRODUCTION_HOSTS.includes(appHost);
+  const dbIsProduction = PRODUCTION_PROJECT_HOSTS.includes(supabaseHost.toLowerCase());
+  if (appHost && supabaseHost) {
+    if (appIsProduction && !dbIsProduction) {
+      errors.push(`APP_URL de produção só pode ser usada com o projeto Supabase de produção (${PRODUCTION_PROJECT_HOSTS[0]}); SUPABASE_URL aponta para ${supabaseHost}.`);
+    }
+    if (dbIsProduction && !appIsProduction) {
+      errors.push(`O projeto Supabase de PRODUÇÃO (${supabaseHost}) só pode ser usado com APP_URL=https://${PRODUCTION_HOSTS[0]}.`);
+    }
+  }
+
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push("Informe --email com um e-mail válido.");
   if (name.length < 2) errors.push('Informe --name "Nome Completo".');
 
@@ -123,7 +142,7 @@ export function buildPlan(argv, env) {
 
 export function describePlan(plan) {
   return [
-    `Projeto Supabase : ${plan.supabaseHost}`,
+    `Projeto Supabase : ${plan.supabaseHost}${PRODUCTION_PROJECT_HOSTS.includes(plan.supabaseHost.toLowerCase()) ? "  (PRODUÇÃO)" : ""}`,
     `Tipo da chave    : ${plan.keyKind}`,
     `Chegada do convite: ${plan.appUrl}/auth/invite`,
     `Entrega do convite: ${plan.sendEmail ? "e-mail enviado pelo Supabase (exige SMTP)" : "link impresso no terminal (nenhum e-mail é enviado)"}`,
@@ -147,26 +166,63 @@ async function main() {
 
   const { createClient } = await import("@supabase/supabase-js");
   const admin = createClient(plan.url, plan.secret, { auth: { persistSession: false, autoRefreshToken: false } });
+  await runBootstrap(plan, admin);
+}
 
+class BootstrapError extends Error {}
+const stop = (message) => {
+  throw new BootstrapError(message);
+};
+
+/**
+ * Procura o administrador de uma execução anterior que parou no meio (perfil criado, convite não entregue).
+ * Só aceita o caso inequívoco: UM único perfil, o mesmo e-mail, papel admin e conta do Auth que NUNCA foi
+ * ativada (sem confirmação e sem login). Qualquer outra coisa continua sendo recusada.
+ */
+async function findResumableAdmin(admin, plan, count) {
+  const refuse = () => stop("Já existem perfis cadastrados. O bootstrap só roda em um banco vazio (ou para retomar o MESMO administrador que ainda não ativou a conta).");
+  if (count !== 1) refuse();
+  const { data: profile, error } = await admin.from("profiles").select("id, email, role").eq("email", plan.email).maybeSingle();
+  if (error || !profile || profile.role !== "admin") refuse();
+  const found = await admin.auth.admin.getUserById(profile.id);
+  const user = found.data?.user;
+  if (found.error || !user) stop("O perfil existe, mas a conta correspondente não foi encontrada no Auth. Não repita o bootstrap: traga este erro ao responsável.");
+  if (user.email_confirmed_at || user.last_sign_in_at) {
+    stop("O administrador já ativou a conta. Não repita o bootstrap: use \"Esqueci minha senha\" na tela de login.");
+  }
+  return user.id;
+}
+
+/**
+ * Núcleo do bootstrap (recebe o cliente Supabase administrativo, então é testável sem rede).
+ * Reexecução segura: a organização é reaproveitada pelo slug; um usuário do Auth sem perfil é reaproveitado
+ * (o convite é refeito); se o perfil falhar, a conta recém-criada é desfeita; e se o perfil já existir e a conta
+ * nunca foi ativada, só um NOVO convite é emitido (retomada).
+ */
+export async function runBootstrap(plan, admin, log = console.log) {
   // Leitura: confirma que a chave secreta funciona na API de dados e que as migrations existem.
   const { count, error: countError } = await admin.from("profiles").select("id", { count: "exact", head: true });
-  if (countError) fail(`Não foi possível consultar profiles (as migrations foram aplicadas? a chave é a secreta?): ${countError.message}`);
+  if (countError) stop(`Não foi possível consultar profiles (as migrations foram aplicadas? a chave é a secreta?): ${countError.message}`);
   // Leitura: confirma que a chave secreta funciona na API administrativa do Auth.
   const users = await admin.auth.admin.listUsers({ page: 1, perPage: 1 });
-  if (users.error) fail(`A chave não conseguiu usar a API administrativa do Auth: ${users.error.message}`);
+  if (users.error) stop(`A chave não conseguiu usar a API administrativa do Auth: ${users.error.message}`);
 
   if (plan.mode === "check-connection") {
-    console.log(`\nConexão OK. Perfis existentes: ${count ?? 0}. Nada foi alterado.`);
-    return;
+    log(`\nConexão OK. Perfis existentes: ${count ?? 0}. Nada foi alterado.`);
+    return { status: "checked" };
   }
 
-  if (count && count > 0) fail("Já existem perfis cadastrados. O bootstrap só roda em um banco vazio.");
+  const resumeUserId = count && count > 0 ? await findResumableAdmin(admin, plan, count) : null;
 
-  let { data: org } = await admin.from("organizations").select("id").eq("slug", "luvi-company").maybeSingle();
-  if (!org) {
-    const created = await admin.from("organizations").insert({ name: "Luvi Company", slug: "luvi-company" }).select("id").single();
-    if (created.error) fail(`Falha ao criar a organização: ${created.error.message}`);
-    org = created.data;
+  let orgId = null;
+  if (!resumeUserId) {
+    let { data: org } = await admin.from("organizations").select("id").eq("slug", "luvi-company").maybeSingle();
+    if (!org) {
+      const created = await admin.from("organizations").insert({ name: "Luvi Company", slug: "luvi-company" }).select("id").single();
+      if (created.error) stop(`Falha ao criar a organização: ${created.error.message}`);
+      org = created.data;
+    }
+    orgId = org.id;
   }
 
   const redirectTo = `${plan.appUrl}/auth/invite`;
@@ -175,36 +231,48 @@ async function main() {
   let inviteUrl = null;
   if (plan.sendEmail) {
     const invited = await admin.auth.admin.inviteUserByEmail(plan.email, { redirectTo, data });
-    if (invited.error) fail(`Falha ao convidar o usuário: ${invited.error.message}`);
+    if (invited.error) stop(`Falha ao convidar o usuário: ${invited.error.message}`);
     userId = invited.data.user.id;
   } else {
     // Gera o convite SEM enviar e-mail. O link usa o token_hash e termina no nosso /auth/invite,
     // que o valida no servidor (verifyOtp): não depende de modelo de e-mail nem de SMTP.
-    const generated = await admin.auth.admin.generateLink({ type: "invite", email: plan.email, options: { redirectTo, data } });
-    if (generated.error) fail(`Falha ao gerar o convite: ${generated.error.message}`);
+    let generated = await admin.auth.admin.generateLink({ type: "invite", email: plan.email, options: { redirectTo, data } });
+    let type = "invite";
+    if (generated.error && resumeUserId) {
+      // Retomada: se o convite não puder ser refeito para uma conta já criada, usa o link de recuperação (mesmo destino).
+      generated = await admin.auth.admin.generateLink({ type: "recovery", email: plan.email, options: { redirectTo: `${plan.appUrl}/auth/recovery` } });
+      type = "recovery";
+    }
+    if (generated.error) stop(`Falha ao gerar o convite: ${generated.error.message}`);
     userId = generated.data.user.id;
-    inviteUrl = `${plan.appUrl}/auth/invite?token_hash=${encodeURIComponent(generated.data.properties.hashed_token)}&type=invite`;
+    inviteUrl = `${plan.appUrl}/auth/${type}?token_hash=${encodeURIComponent(generated.data.properties.hashed_token)}&type=${type}`;
   }
 
-  const profile = await admin.from("profiles").insert({
-    id: userId,
-    organization_id: org.id,
-    full_name: plan.name,
-    email: plan.email,
-    role: "admin",
-  });
-  if (profile.error) {
-    await admin.auth.admin.deleteUser(userId); // não deixa conta órfã sem perfil
-    fail(`Falha ao criar o perfil: ${profile.error.message}`);
-  }
-
-  if (inviteUrl) {
-    console.log(`\nAdministrador criado: ${plan.email}. Abra este link no navegador para criar a senha.`);
-    console.log("ATENÇÃO: é de uso único, expira e vale como senha. Não cole em chat, e-mail ou ticket.\n");
-    console.log(inviteUrl);
+  if (resumeUserId) {
+    if (userId !== resumeUserId) stop("O convite foi emitido para outra conta do Auth. Não repita o bootstrap: traga este erro ao responsável.");
   } else {
-    console.log(`\nAdministrador convidado: ${plan.email}. Peça para abrir o e-mail e criar a senha.`);
+    const profile = await admin.from("profiles").insert({
+      id: userId,
+      organization_id: orgId,
+      full_name: plan.name,
+      email: plan.email,
+      role: "admin",
+    });
+    if (profile.error) {
+      await admin.auth.admin.deleteUser(userId); // não deixa conta órfã sem perfil
+      stop(`Falha ao criar o perfil: ${profile.error.message}`);
+    }
   }
+
+  const verbo = resumeUserId ? "retomado (novo convite)" : "criado";
+  if (inviteUrl) {
+    log(`\nAdministrador ${verbo}: ${plan.email}. Abra este link no navegador para criar a senha.`);
+    log("ATENÇÃO: é de uso único, expira e vale como senha. Não cole em chat, e-mail ou ticket.\n");
+    log(inviteUrl);
+  } else {
+    log(`\nAdministrador ${verbo}: ${plan.email}. Abra o e-mail do convite e crie a senha.`);
+  }
+  return { status: resumeUserId ? "resumed" : "created", userId, inviteUrl };
 }
 
 function fail(message) {

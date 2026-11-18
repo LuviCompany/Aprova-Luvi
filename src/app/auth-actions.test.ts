@@ -219,7 +219,8 @@ describe("updatePasswordAction", () => {
 
   it("aplica a política de senha e a confirmação", async () => {
     getSessionState.mockResolvedValue(okUser("cliente"));
-    expect((await update("curta1")).error).toMatch(/ao menos 10/);
+    expect((await update("curta1")).error).toMatch(/ao menos 12/);
+    expect((await update("Luvi2026segura")).error).toMatch(/símbolo/);
     expect((await update("Senha-nova-2026", "Senha-nova-2027")).error).toMatch(/não conferem/);
     expect(auth.updateUser).not.toHaveBeenCalled();
   });

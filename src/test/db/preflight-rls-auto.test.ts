@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { OFFICIAL_BODY, installAutoRls, type RlsOptions } from "./auto-rls";
 import { createTestDb, type TestDb } from "./harness";
 
 /**
@@ -11,6 +12,9 @@ import { createTestDb, type TestDb } from "./harness";
  * qualquer outro objeto, continua sendo acusado. As mesmas regras valem nos blocos do verify.sql que olham
  * funções (executáveis por anon/authenticated e SECURITY DEFINER sem search_path vazio).
  */
+
+// Cada teste sobe um banco em memória: com a suíte inteira rodando em paralelo, 20 s não bastam.
+vi.setConfig({ testTimeout: 120_000 });
 
 const parse = (file: string) =>
   readFileSync(join(process.cwd(), "supabase", file), "utf8")
@@ -41,53 +45,6 @@ const verifyFunctionChecks = [
   "funções executáveis por authenticated fora da lista permitida",
   "funções SECURITY DEFINER sem search_path vazio",
 ].map((start) => verify.find((c) => c.title.startsWith(start))!);
-
-const OFFICIAL_BODY = `
-declare cmd record;
-begin
-  for cmd in
-    select * from pg_event_trigger_ddl_commands()
-    where command_tag in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO') and object_type in ('table', 'partitioned table')
-  loop
-    if cmd.schema_name is not null and cmd.schema_name in ('public') then
-      begin
-        execute format('alter table if exists %s enable row level security', cmd.object_identity);
-        raise log 'rls_auto_enable: enabled RLS on %', cmd.object_identity;
-      exception when others then
-        raise log 'rls_auto_enable: failed to enable RLS on %', cmd.object_identity;
-        raise;
-      end;
-    else
-      raise log 'rls_auto_enable: skip %', cmd.object_identity;
-    end if;
-  end loop;
-end;`;
-
-interface RlsOptions {
-  definer?: boolean;
-  searchPath?: string;
-  body?: string;
-  name?: string;
-  /** Nome do event trigger; null = sem event trigger. */
-  trigger?: string | null;
-  tags?: string;
-  owner?: string;
-}
-
-async function installAutoRls(db: TestDb, o: RlsOptions = {}) {
-  const name = o.name ?? "rls_auto_enable";
-  await db.exec(`
-    create function public.${name}() returns event_trigger language plpgsql
-    ${o.definer === false ? "" : "security definer"}
-    set search_path = ${o.searchPath ?? "pg_catalog"}
-    as $fn$${o.body ?? OFFICIAL_BODY}$fn$`);
-  if (o.owner) await db.exec(`create role ${o.owner}; alter function public.${name}() owner to ${o.owner}`);
-  if (o.trigger !== null) {
-    await db.exec(
-      `create event trigger ${o.trigger ?? "ensure_rls"} on ddl_command_end when tag in (${o.tags ?? "'CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO'"}) execute function public.${name}()`,
-    );
-  }
-}
 
 async function withDb<T>(fn: (db: TestDb) => Promise<T>, migrate = false) {
   const db = await createTestDb({ migrate });

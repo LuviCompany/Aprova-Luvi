@@ -52,3 +52,44 @@ Ferramenta: `npm run sql:copy -- <n>` copia o SQL para a área de transferência
 6. Me informe o resultado (contagens, sem dados). Eu registro a aplicação em `docs/` com data e hashes.
 
 **Se uma migration falhar:** o SQL Editor executa o texto como uma única consulta, então o erro desfaz aquela migration. Não reaplique nem edite o SQL: me traga o erro. O banco é novo e vazio, então o pior caso é recriar o projeto.
+
+## 4. Incidente: migration 08 falhou com 42723 (`audit_row_change already exists`)
+
+**Causa exata.** `app.audit_row_change()` é criada **uma única vez**, pela migration 08, com `CREATE FUNCTION` (sem `OR REPLACE`); a migration 10 só a substitui (`CREATE OR REPLACE`) e nenhuma das migrations 01–07 a menciona. O erro 42723 acontece no **primeiro comando** da 08, então a função **já existia** quando a 08 rodou. Pelo código, isso só é possível se a 08 (ou a 10) já tinha sido executada neste projeto antes: o caso mais provável é uma execução anterior da 08 que **terminou no servidor** (clique duplo em Run, aba reaproveitada, resposta perdida por instabilidade de rede) e foi repetida. O que não dá para saber pelo código é qual das duas execuções você viu: só a consulta de diagnóstico mostra o estado real.
+
+**Estado esperado após a falha.** A execução que falhou **não alterou nada**: o comando que falha é o primeiro da migration, então nenhum trigger nem permissão dela chegou a rodar (testado em `migration-08-sequence.test.ts`: reexecutar a 08 reproduz o 42723 e o catálogo fica idêntico). O estado do banco é, portanto, o da **execução anterior**: (B) 08 completa (função com o corpo da 08 + 4 triggers `*_audit_row`), ou (A) sem a 08 (impossível pelo erro).
+
+**Verificação (somente leitura; rode ANTES de qualquer outra coisa):**
+
+```bash
+npm run sql:copy -- diagnostico-migration-08
+```
+
+Cole no SQL Editor de "Aprova Luvi - Produção" e clique em Run. A última linha, `VEREDITO`, diz o que fazer:
+
+| Veredito | Significado | O que fazer |
+|---|---|---|
+| **B** | 08 já aplicada por completo (função com o corpo da 08 e os 4 triggers) | **Não reexecutar a 08.** Siga para a 09 só depois de confirmar com o assistente |
+| A | 08 não aplicada | Executar a 08 inteira, uma vez |
+| C | função presente, faltam triggers | Parar; trazer o resultado (a correção seria só criar os triggers que faltam) |
+| D / E / PARE | função da migration 10, estado inesperado ou objetos da 09 em diante | Parar; trazer o resultado |
+
+**Correção.** Nenhuma migration precisa mudar: o erro não é da migration, é de repetir uma migration já aplicada. Tornar a 08 idempotente seria desnecessário e a afastaria do arquivo já aplicado no dev (migrations são imutáveis). Hashes e manifesto das 15 migrations seguem iguais; só o manifesto ganhou o `diagnostico-migration-08.sql`.
+
+**Retomada segura.** (1) Diagnóstico; (2) veredito B → **não** rodar a 08 de novo, anotar a 08 como aplicada; (3) se o veredito for A, rodar a 08 uma vez e repetir o diagnóstico (esperado: B); (4) só então seguir para a 09. Em qualquer outro veredito, parar. Para evitar repetição: depois de cada Run, **não clique de novo**; confirme o resultado e, na dúvida, rode o diagnóstico em vez de repetir a migration.
+
+### 4.1 Resultado do diagnóstico em produção: veredito E (falso positivo do diagnóstico)
+
+O diagnóstico acusou "corpo DIFERENTE de 08 e 10", mas com as dependências 6/6, permissões corretas e **4 de 4 triggers**. Esse conjunto é o de uma **migration 08 aplicada por completo** cujo texto chegou ao banco com **quebras de linha CRLF**.
+
+**Causa demonstrada (em teste, `audit-row-change-evidence.test.ts`).** O Postgres guarda o corpo de uma função **byte a byte** (`pg_proc.prosrc`); não há normalização, e `pg_get_functiondef()` só monta o cabeçalho (não altera o corpo). O editor do navegador (Windows) grava as quebras como CRLF: aplicando a migration 08 com `\n` trocado por `\r\n`, o corpo ganha 57 caracteres CR, o md5 bruto muda (`fb58f9dd…` em vez de `f86ee29a…`) e **sem os CR volta a ser exatamente `f86ee29a3a242c30d6500380cf46df2a`**. A lógica é idêntica (o PL/pgSQL trata CR como espaço). O erro estava no diagnóstico, que comparava o md5 bruto; ele agora compara **sem CR** e descreve o que viu ("igual à migration 08 (com quebras de linha CRLF)"). O `sql:copy` conferia o texto na área de transferência (LF); a conversão acontece depois, no navegador.
+
+**Falta confirmar em produção (somente leitura):**
+
+```bash
+npm run sql:copy -- diagnostico-audit-row-change
+```
+
+Cole no SQL Editor e clique em Run. Esperado: `tamanho do corpo` com CR > 0, `md5 do corpo, bruto` DIVERGE, `md5 do corpo sem os CR` ok, dono/SECURITY DEFINER/search_path ok, EXECUTE ok, 4 triggers ok e VEREDITO "IGUAL à migration 08 exceto as quebras de linha (CRLF em vez de LF)… falso positivo". Se o veredito for "DIFERENTE… PARE", rode `npm run sql:copy -- diagnostico-audit-row-change-corpo` e traga o resultado (é código do repositório, sem segredos). Só então, com o diagnóstico da 08 (`npm run sql:copy -- diagnostico-migration-08`) em **B**, a 08 conta como aplicada; a 09 continua **não** autorizada até lá.
+
+**Correção.** Só no diagnóstico (já feita). Nenhuma migration muda, nada é alterado no banco, e os hashes das migrations seguem iguais. Efeito prático: tudo o que o editor do navegador gravou em produção terá CRLF dentro dos corpos de função; é inofensivo, mas **qualquer comparação de hash de corpo no banco deve ignorar o CR**.

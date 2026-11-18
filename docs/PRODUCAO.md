@@ -28,7 +28,7 @@ Estado em **2026-11-04**. O sistema está **tecnicamente pronto para configuraç
 | Site URL | `https://aprova.luvicompany.com.br` |
 | Redirect URLs | `https://aprova.luvicompany.com.br/auth/*` (e **nenhuma** de localhost) |
 | Validade do link de e-mail (OTP expiry) | **86400 s (24 h)**: o convite diz "24 horas" |
-| Senha | mínimo **10** caracteres, letras e números; **proteção contra senhas vazadas** ligada (Pro) |
+| Senha | mínimo **12** caracteres, com maiúsculas, minúsculas, números e símbolos (igual à regra do app, `src/lib/auth/password.ts`); **proteção contra senhas vazadas** ligada (Pro) |
 | JWT expiry / rotação do refresh token | 3600 s / ligada |
 | SMTP próprio (Resend) | host `smtp.resend.com`, usuário `resend`, senha = chave de API do Resend, remetente do domínio verificado: **necessário** para a recuperação de senha e para editar os modelos |
 | Modelos de e-mail | colar `supabase/templates/invite.html` e `recovery.html` (usam `{{ .RedirectTo }}`) |
