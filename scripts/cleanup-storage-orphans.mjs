@@ -51,7 +51,7 @@ export function buildPlan(argv, env) {
 }
 
 /** Lista TODOS os objetos do bucket, descendo pelas pastas. */
-async function listAll(storage) {
+export async function listAll(storage) {
   const out = [];
   const walk = async (prefix) => {
     for (let offset = 0; ; offset += PAGE) {

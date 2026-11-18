@@ -76,7 +76,7 @@ O link impresso é de uso único e vale como senha: abra você mesmo. **Depois d
 
 ## 8. Operação
 
-- **Backups/PITR:** confirme no plano contratado e **teste uma restauração** antes de ter dados reais.
+- **Backups/PITR:** confirme no plano contratado e **teste uma restauração** antes de ter dados reais. No plano **Free** não há backup automático e o Storage nunca entra no backup do banco: use a rotina cifrada de `docs/BACKUP.md` (banco, arquivos, verificação, ensaio de restauração e frequência).
 - **Arquivos órfãos:** `node --env-file=… scripts/cleanup-storage-orphans.mjs` (relatório por padrão; `--execute` só com `--project-host`; só apaga o que nenhum registro usa e é mais antigo que 24 h). Rodar mensalmente.
 - **Rotação de segredos:** `APPROVAL_LINK_SECRET` (invalida códigos e sessões em curso; links seguem válidos), chaves do Supabase e do Resend; o assistente nunca lê o `.env.local`.
 - **Logs:** o token do link rápido está no caminho `/aprovar/<token>`; ele sozinho **não aprova** (exige o código do e-mail), mas **não** grave URL completa de `/aprovar/*` em *log drain*/analytics.
