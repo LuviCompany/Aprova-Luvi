@@ -8,7 +8,8 @@
 import { diagnoseEnv } from "../src/lib/env.ts";
 
 const production = process.argv.includes("--production");
-const d = diagnoseEnv(process.env, { production });
+// Na checagem de lançamento o app roda como na Vercel (NODE_ENV=production): é assim que ele interpreta APP_URL.
+const d = diagnoseEnv(production ? { ...process.env, NODE_ENV: "production" } : process.env, { production });
 console.log("Resumo (sem valores secretos):");
 for (const [k, v] of Object.entries(d.summary)) console.log(`  ${k.padEnd(15)} ${v}`);
 for (const w of d.warnings) console.log(`AVISO: ${w}`);

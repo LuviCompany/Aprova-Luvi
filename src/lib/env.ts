@@ -193,6 +193,14 @@ export interface EnvDiagnosis {
   summary: Record<string, string>;
 }
 
+/**
+ * Projeto Supabase de PRODUÇÃO ("Aprova Luvi - Produção") e domínio oficial. Só a checagem de lançamento
+ * (`env:check:prod`) usa estes valores, para que uma publicação nunca saia apontando para o projeto de
+ * desenvolvimento ou para outro domínio. O ID do projeto não é segredo.
+ */
+export const PRODUCTION_SUPABASE_HOST = "nvtiynmebffxctqlrwqo.supabase.co";
+export const PRODUCTION_APP_HOST = "aprova.luvicompany.com.br";
+
 /** Diagnóstico para `npm run env:check`. Nunca devolve o valor de uma chave. */
 export function diagnoseEnv(env: NodeJS.ProcessEnv = process.env, options: { production?: boolean } = {}): EnvDiagnosis {
   const production = options.production ?? env.NODE_ENV === "production";
@@ -271,6 +279,17 @@ export function diagnoseEnv(env: NodeJS.ProcessEnv = process.env, options: { pro
       errors.push("APP_URL ausente ou inválida (obrigatória em produção).");
     }
     if (url && /localhost|127.0.0.1/.test(url)) errors.push("SUPABASE_URL de produção não pode apontar para localhost.");
+    if (host !== "(ausente)" && host.toLowerCase() !== PRODUCTION_SUPABASE_HOST) {
+      errors.push(`SUPABASE_URL precisa ser o projeto de PRODUÇÃO (${PRODUCTION_SUPABASE_HOST}); o host informado é ${host}. Nunca publique apontando para o Supabase de desenvolvimento.`);
+    }
+    try {
+      const appHost = new URL(rawSite ?? "").hostname.toLowerCase();
+      if (appHost !== PRODUCTION_APP_HOST && !isLocalHost(appHost)) {
+        errors.push(`APP_URL precisa ser https://${PRODUCTION_APP_HOST} (host informado: ${appHost}).`);
+      }
+    } catch {
+      // APP_URL inválida já foi apontada acima
+    }
   }
 
   return {

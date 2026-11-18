@@ -207,8 +207,12 @@ describe("MaterialFormDialog (cadastro)", () => {
     await userEvent.selectOptions(within(dialog).getByLabelText("Tipo"), "pdf");
     await userEvent.click(within(dialog).getByRole("button", { name: "Cadastrar material" }));
     await within(dialog).findByText("Falhou.");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // "Cancelar" fica desabilitado enquanto o envio está pendente; com a suíte inteira em paralelo o clique chegava antes
+    // de o botão reabilitar e o diálogo nunca fechava (falha intermitente). Espera o botão voltar a ficar ativo.
+    const cancel = within(dialog).getByRole("button", { name: "Cancelar" });
+    await waitFor(() => expect(cancel).toBeEnabled(), { timeout: 8000 });
+    await userEvent.click(cancel);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument(), { timeout: 8000 });
     dialog = await openCreate();
     expect(within(dialog).queryByText("Falhou.")).not.toBeInTheDocument();
     expect(within(dialog).getByLabelText("Título")).toHaveValue("");

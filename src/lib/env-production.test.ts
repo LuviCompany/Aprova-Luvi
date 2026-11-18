@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diagnoseEnv } from "@/lib/env";
+import { diagnoseEnv, PRODUCTION_APP_HOST, PRODUCTION_SUPABASE_HOST } from "@/lib/env";
 
 /** `npm run env:check -- --production`: o que é aviso em desenvolvimento vira ERRO no lançamento. */
 
@@ -8,7 +8,7 @@ const PUB = "sb_publishable_" + "x".repeat(30);
 const SEC = "sb_secret_" + "y".repeat(30);
 
 const ready = {
-  SUPABASE_URL: "https://abcdefghijklmnop.supabase.co",
+  SUPABASE_URL: `https://${PRODUCTION_SUPABASE_HOST}`,
   SUPABASE_PUBLISHABLE_KEY: PUB,
   SUPABASE_SECRET_KEY: SEC,
   APP_URL: "https://aprova.luvicompany.com.br",
@@ -46,11 +46,27 @@ describe("diagnoseEnv em modo produção", () => {
       [{ APP_URL: "" }, /APP_URL/],
       [{ SUPABASE_URL: "http://localhost:54321" }, /localhost/],
     ];
+    // (os casos de projeto/domínio errados têm teste próprio abaixo)
     for (const [patch, expected] of casos) {
       const d = diagnoseEnv(env({ ...ready, ...patch }), { production: true });
       expect(d.ok, JSON.stringify(Object.keys(patch))).toBe(false);
       expect(d.errors.join(" | "), JSON.stringify(Object.keys(patch))).toMatch(expected);
     }
+  });
+
+  it("TRAVA: o Supabase de desenvolvimento (ou qualquer outro projeto) e domínios fora do oficial viram erro", () => {
+    // projeto de desenvolvimento, montado em partes para a URL completa do .env.local nunca entrar num commit
+    const dev = ["https://", "kswnwootbdzlhdvbhhpk", ".supabase.co"].join("");
+    for (const url of [dev, "https://abcdefghijklmnop.supabase.co"]) {
+      const d = diagnoseEnv(env({ ...ready, SUPABASE_URL: url }), { production: true });
+      expect(d.ok, url).toBe(false);
+      expect(d.errors.join(" | ")).toMatch(/precisa ser o projeto de PRODUÇÃO/);
+    }
+    const d = diagnoseEnv(env({ ...ready, APP_URL: "https://outro-dominio.vercel.app" }), { production: true });
+    expect(d.ok).toBe(false);
+    expect(d.errors.join(" | ")).toMatch(new RegExp(`APP_URL precisa ser https://${PRODUCTION_APP_HOST.replace(/\./g, "\\.")}`));
+    // o par oficial passa, em maiúsculas também
+    expect(diagnoseEnv(env({ ...ready, SUPABASE_URL: `https://${PRODUCTION_SUPABASE_HOST.toUpperCase()}` }), { production: true }).ok).toBe(true);
   });
 
   it("sem a opção, o mesmo ambiente de desenvolvimento só gera avisos (modo padrão não muda)", () => {

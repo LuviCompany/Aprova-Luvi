@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildPlan, describePlan, PRODUCTION_PROJECT_HOSTS } from "../../scripts/bootstrap-admin.mjs";
+import { PRODUCTION_SUPABASE_HOST } from "@/lib/env";
 
 const PROD_URL = `https://${PRODUCTION_PROJECT_HOSTS[0]}`;
 // projeto "DB Aprova Luvi" (desenvolvimento); montado em partes para o texto completo da URL do .env.local nunca entrar num commit
@@ -22,6 +23,10 @@ const baseArgs = ["--email", "Admin@LuviCompany.com.br", "--name", "Admin Teste"
 const plan = (args = baseArgs, env: Record<string, string> = baseEnv) => buildPlan(args, env);
 
 describe("bootstrap-admin: plano e travas de segurança", () => {
+  it("o projeto de produção é o mesmo que o env:check:prod exige (uma só fonte de verdade)", () => {
+    expect(PRODUCTION_PROJECT_HOSTS).toEqual([PRODUCTION_SUPABASE_HOST]);
+  });
+
   it("o padrão é SIMULAÇÃO e normaliza o e-mail", () => {
     const p = plan();
     expect(p.errors).toEqual([]);

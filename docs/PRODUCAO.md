@@ -64,7 +64,7 @@ O link impresso é de uso único e vale como senha: abra você mesmo. **Depois d
 | `RESEND_API_KEY` | chave do Resend (**segredo**) |
 | `EMAIL_FROM` | remetente do domínio verificado |
 
-**Nunca** definir em produção: `APROVA_DEMO_MODE`, `E2E_SIMULATED_EMAIL`, `EMAIL_PROVIDER=simulated`. Ambientes de *Preview* não podem apontar para o banco de produção (use o projeto de desenvolvimento ou deixe sem variáveis). Antes de publicar: `npm run env:check:prod` com as variáveis de produção no terminal (carrega o `.env.local` se existir: use um arquivo à parte ou variáveis do terminal): **precisa terminar em "Configuração válida"**.
+**Nunca** definir em produção: `APROVA_DEMO_MODE`, `E2E_SIMULATED_EMAIL`, `EMAIL_PROVIDER=simulated`. Ambientes de *Preview* não podem apontar para o banco de produção (use o projeto de desenvolvimento ou deixe sem variáveis). Antes de publicar: `npm run env:check:prod` com as variáveis de produção no terminal (não carrega o `.env.local`: use variáveis só na sessão do terminal; passo a passo em `docs/VERCEL-PRODUCAO.md`): **precisa terminar em "Configuração válida"**.
 
 ## 7. Teste de fumaça pós-publicação (com dados fictícios)
 
