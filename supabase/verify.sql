@@ -60,13 +60,43 @@ where has_column_privilege('authenticated', 'public.approvers', 'profile_id', 'I
 -- CHECK: funções de public/app executáveis pelo anônimo
 select n.nspname || '.' || p.proname as funcao
 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-where n.nspname in ('public', 'app') and has_function_privilege('anon', p.oid, 'EXECUTE');
+where n.nspname in ('public', 'app') and has_function_privilege('anon', p.oid, 'EXECUTE')
+  -- Exceção única: a função oficial do RLS automático do Supabase (public.rls_auto_enable), validada por inteiro
+  -- (ver preflight.sql). Retorna event_trigger: não pode ser chamada por ninguém, só disparada pelo event trigger.
+  and not coalesce((p.proname = 'rls_auto_enable' and p.pronamespace = 'public'::regnamespace
+    and p.pronargs = 0 and p.prorettype = 'event_trigger'::regtype
+    and p.prolang = (select l.oid from pg_language l where l.lanname = 'plpgsql')
+    and p.prosecdef and p.proowner = 'postgres'::regrole
+    and p.proconfig = array['search_path=pg_catalog']
+    and p.prosrc ~* 'pg_event_trigger_ddl_commands\(\)' and p.prosrc ~* 'enable row level security'
+    and p.prosrc !~* '\m(grant|revoke|drop|truncate|copy|dblink|http)\M|insert\s+into|delete\s+from|update\s+\S+\s+set|create\s+(role|user|function|extension)|set\s+role'
+    and cardinality(regexp_split_to_array(lower(p.prosrc), '\mexecute\M')) = 2
+    and exists (select 1 from pg_event_trigger e
+                where e.evtfoid = p.oid and e.evtname = 'ensure_rls' and e.evtevent = 'ddl_command_end'
+                  and e.evtenabled in ('O', 'A')
+                  and e.evttags @> array['CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO']
+                  and e.evttags <@ array['CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO'])), false);
 
 -- CHECK: funções executáveis por authenticated fora da lista permitida
 select n.nspname || '.' || p.proname as funcao
 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 where n.nspname in ('public', 'app')
   and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+  -- Exceção única: a função oficial do RLS automático do Supabase (public.rls_auto_enable), validada por inteiro
+  -- (ver preflight.sql). Retorna event_trigger: não pode ser chamada por ninguém, só disparada pelo event trigger.
+  and not coalesce((p.proname = 'rls_auto_enable' and p.pronamespace = 'public'::regnamespace
+    and p.pronargs = 0 and p.prorettype = 'event_trigger'::regtype
+    and p.prolang = (select l.oid from pg_language l where l.lanname = 'plpgsql')
+    and p.prosecdef and p.proowner = 'postgres'::regrole
+    and p.proconfig = array['search_path=pg_catalog']
+    and p.prosrc ~* 'pg_event_trigger_ddl_commands\(\)' and p.prosrc ~* 'enable row level security'
+    and p.prosrc !~* '\m(grant|revoke|drop|truncate|copy|dblink|http)\M|insert\s+into|delete\s+from|update\s+\S+\s+set|create\s+(role|user|function|extension)|set\s+role'
+    and cardinality(regexp_split_to_array(lower(p.prosrc), '\mexecute\M')) = 2
+    and exists (select 1 from pg_event_trigger e
+                where e.evtfoid = p.oid and e.evtname = 'ensure_rls' and e.evtevent = 'ddl_command_end'
+                  and e.evtenabled in ('O', 'A')
+                  and e.evttags @> array['CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO']
+                  and e.evttags <@ array['CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO'])), false)
   and (n.nspname || '.' || p.proname) not in (
     'public.decide_as_approver', 'public.create_approval_link', 'public.revoke_approval_link',
     'public.cancel_approval_request', 'public.link_approver_to_client', 'public.prepare_approver_invite',
@@ -97,7 +127,22 @@ select (array_agg(id))[1] from public.approval_requests where status = 'aberta' 
 select n.nspname || '.' || p.proname as funcao
 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 where n.nspname in ('public', 'app') and p.prosecdef
-  and not coalesce(p.proconfig @> array['search_path=""'], false);
+  and not coalesce(p.proconfig @> array['search_path=""'], false)
+  -- Exceção única: a função oficial do RLS automático do Supabase (public.rls_auto_enable), validada por inteiro
+  -- (ver preflight.sql). Retorna event_trigger: não pode ser chamada por ninguém, só disparada pelo event trigger.
+  and not coalesce((p.proname = 'rls_auto_enable' and p.pronamespace = 'public'::regnamespace
+    and p.pronargs = 0 and p.prorettype = 'event_trigger'::regtype
+    and p.prolang = (select l.oid from pg_language l where l.lanname = 'plpgsql')
+    and p.prosecdef and p.proowner = 'postgres'::regrole
+    and p.proconfig = array['search_path=pg_catalog']
+    and p.prosrc ~* 'pg_event_trigger_ddl_commands\(\)' and p.prosrc ~* 'enable row level security'
+    and p.prosrc !~* '\m(grant|revoke|drop|truncate|copy|dblink|http)\M|insert\s+into|delete\s+from|update\s+\S+\s+set|create\s+(role|user|function|extension)|set\s+role'
+    and cardinality(regexp_split_to_array(lower(p.prosrc), '\mexecute\M')) = 2
+    and exists (select 1 from pg_event_trigger e
+                where e.evtfoid = p.oid and e.evtname = 'ensure_rls' and e.evtevent = 'ddl_command_end'
+                  and e.evtenabled in ('O', 'A')
+                  and e.evttags @> array['CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO']
+                  and e.evttags <@ array['CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO'])), false);
 
 -- CHECK: políticas que não são exclusivas do papel authenticated
 select tablename, policyname, roles

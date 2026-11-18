@@ -1,0 +1,325 @@
+-- Aprova Luvi — verificação PÓS-MIGRATION em UMA tabela (somente leitura).
+-- GERADO por scripts/build-verify-summary.mjs a partir de supabase/verify.sql: não edite à mão.
+-- Cole TUDO no SQL Editor e clique em Run. Resultado esperado: 31 linhas, TODAS com violacoes = 0.
+-- Se alguma linha tiver violacoes > 0, pare e rode, sozinho, o bloco de mesmo título do verify.sql.
+select 1 as bloco, 'tabelas do schema public sem RLS ligada' as verificacao, (select count(*) from (
+select c.relname as tabela
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity
+) t) as violacoes
+union all
+select 2 as bloco, 'privilégios de tabela para o papel anon (deve ser nenhum)' as verificacao, (select count(*) from (
+select table_name, privilege_type
+from information_schema.role_table_grants
+where grantee = 'anon' and table_schema = 'public'
+) t) as violacoes
+union all
+select 3 as bloco, 'privilégios de coluna para o papel anon (deve ser nenhum)' as verificacao, (select count(*) from (
+select table_name, column_name, privilege_type
+from information_schema.role_column_grants
+where grantee = 'anon' and table_schema = 'public'
+) t) as violacoes
+union all
+select 4 as bloco, 'authenticated com TRUNCATE, REFERENCES ou TRIGGER em alguma tabela' as verificacao, (select count(*) from (
+select table_name, privilege_type
+from information_schema.role_table_grants
+where grantee = 'authenticated' and table_schema = 'public'
+  and privilege_type in ('TRUNCATE', 'REFERENCES', 'TRIGGER')
+) t) as violacoes
+union all
+select 5 as bloco, 'tabelas imutáveis alteráveis pelo app (UPDATE/DELETE por authenticated)' as verificacao, (select count(*) from (
+select t.relname as tabela
+from pg_class t join pg_namespace n on n.oid = t.relnamespace
+where n.nspname = 'public' and t.relkind = 'r'
+  and t.relname in ('decisions', 'audit_events', 'material_versions', 'comments',
+                    'approval_links', 'approval_requests')
+  and (has_any_column_privilege('authenticated', t.oid, 'UPDATE')
+       or has_table_privilege('authenticated', t.oid, 'DELETE'))
+) t) as violacoes
+union all
+select 6 as bloco, 'tabelas de segredos acessíveis ao app' as verificacao, (select count(*) from (
+select t.relname as tabela
+from pg_class t join pg_namespace n on n.oid = t.relnamespace
+where n.nspname = 'public' and t.relname in ('approval_verifications', 'approval_link_sessions')
+  and has_any_column_privilege('authenticated', t.oid, 'SELECT,INSERT,UPDATE')
+) t) as violacoes
+union all
+select 7 as bloco, 'colunas sensíveis expostas' as verificacao, (select count(*) from (
+select 'approval_links.token_hash legível' as problema
+where has_column_privilege('authenticated', 'public.approval_links', 'token_hash', 'SELECT')
+union all select 'materials.status gravável'
+where has_column_privilege('authenticated', 'public.materials', 'status', 'UPDATE')
+   or has_column_privilege('authenticated', 'public.materials', 'status', 'INSERT')
+union all select 'profiles.role/active/organization_id graváveis'
+where has_column_privilege('authenticated', 'public.profiles', 'role', 'UPDATE')
+   or has_column_privilege('authenticated', 'public.profiles', 'active', 'UPDATE')
+   or has_column_privilege('authenticated', 'public.profiles', 'organization_id', 'UPDATE')
+union all select 'approvers.profile_id gravável'
+where has_column_privilege('authenticated', 'public.approvers', 'profile_id', 'INSERT')
+   or has_column_privilege('authenticated', 'public.approvers', 'profile_id', 'UPDATE')
+) t) as violacoes
+union all
+select 8 as bloco, 'funções de public/app executáveis pelo anônimo' as verificacao, (select count(*) from (
+select n.nspname || '.' || p.proname as funcao
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname in ('public', 'app') and has_function_privilege('anon', p.oid, 'EXECUTE')
+  -- Exceção única: a função oficial do RLS automático do Supabase (public.rls_auto_enable), validada por inteiro
+  -- (ver preflight.sql). Retorna event_trigger: não pode ser chamada por ninguém, só disparada pelo event trigger.
+  and not coalesce((p.proname = 'rls_auto_enable' and p.pronamespace = 'public'::regnamespace
+    and p.pronargs = 0 and p.prorettype = 'event_trigger'::regtype
+    and p.prolang = (select l.oid from pg_language l where l.lanname = 'plpgsql')
+    and p.prosecdef and p.proowner = 'postgres'::regrole
+    and p.proconfig = array['search_path=pg_catalog']
+    and p.prosrc ~* 'pg_event_trigger_ddl_commands\(\)' and p.prosrc ~* 'enable row level security'
+    and p.prosrc !~* '\m(grant|revoke|drop|truncate|copy|dblink|http)\M|insert\s+into|delete\s+from|update\s+\S+\s+set|create\s+(role|user|function|extension)|set\s+role'
+    and cardinality(regexp_split_to_array(lower(p.prosrc), '\mexecute\M')) = 2
+    and exists (select 1 from pg_event_trigger e
+                where e.evtfoid = p.oid and e.evtname = 'ensure_rls' and e.evtevent = 'ddl_command_end'
+                  and e.evtenabled in ('O', 'A')
+                  and e.evttags @> array['CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO']
+                  and e.evttags <@ array['CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO'])), false)
+) t) as violacoes
+union all
+select 9 as bloco, 'funções executáveis por authenticated fora da lista permitida' as verificacao, (select count(*) from (
+select n.nspname || '.' || p.proname as funcao
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname in ('public', 'app')
+  and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+  -- Exceção única: a função oficial do RLS automático do Supabase (public.rls_auto_enable), validada por inteiro
+  -- (ver preflight.sql). Retorna event_trigger: não pode ser chamada por ninguém, só disparada pelo event trigger.
+  and not coalesce((p.proname = 'rls_auto_enable' and p.pronamespace = 'public'::regnamespace
+    and p.pronargs = 0 and p.prorettype = 'event_trigger'::regtype
+    and p.prolang = (select l.oid from pg_language l where l.lanname = 'plpgsql')
+    and p.prosecdef and p.proowner = 'postgres'::regrole
+    and p.proconfig = array['search_path=pg_catalog']
+    and p.prosrc ~* 'pg_event_trigger_ddl_commands\(\)' and p.prosrc ~* 'enable row level security'
+    and p.prosrc !~* '\m(grant|revoke|drop|truncate|copy|dblink|http)\M|insert\s+into|delete\s+from|update\s+\S+\s+set|create\s+(role|user|function|extension)|set\s+role'
+    and cardinality(regexp_split_to_array(lower(p.prosrc), '\mexecute\M')) = 2
+    and exists (select 1 from pg_event_trigger e
+                where e.evtfoid = p.oid and e.evtname = 'ensure_rls' and e.evtevent = 'ddl_command_end'
+                  and e.evtenabled in ('O', 'A')
+                  and e.evttags @> array['CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO']
+                  and e.evttags <@ array['CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO'])), false)
+  and (n.nspname || '.' || p.proname) not in (
+    'public.decide_as_approver', 'public.create_approval_link', 'public.revoke_approval_link',
+    'public.cancel_approval_request', 'public.link_approver_to_client', 'public.prepare_approver_invite',
+    'public.revoke_approver_invite', 'public.reorder_version_files', 'public.start_material_revision', 'public.submit_for_approval', 'app.my_role', 'app.my_org', 'app.is_staff', 'app.is_admin',
+    'app.can_manage_clients', 'app.staff_can_access', 'app.my_client_ids', 'app.my_approver_id',
+    'app.version_was_sent', 'app.material_was_sent', 'app.material_visible_project', 'app.try_uuid'
+  )
+) t) as violacoes
+union all
+select 10 as bloco, 'funções do fluxo por link (e a antiga decide_via_link) acessíveis a quem não é o servidor' as verificacao, (select count(*) from (
+select p.proname || ' executável por anon/authenticated (ou decide_via_link ainda existe)' as problema
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+  and (p.proname = 'decide_via_link'
+       or (p.proname in ('link_resolve', 'link_issue_code', 'link_verify_code', 'link_session_context', 'decide_with_link_session')
+           and (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('authenticated', p.oid, 'EXECUTE'))))
+) t) as violacoes
+union all
+select 11 as bloco, 'authenticated com INSERT direto em approval_requests (o envio é só por submit_for_approval)' as verificacao, (select count(*) from (
+select 'approval_requests aceita INSERT direto de authenticated' as problema
+where has_table_privilege('authenticated', 'public.approval_requests', 'INSERT')
+   or has_any_column_privilege('authenticated', 'public.approval_requests', 'INSERT')
+) t) as violacoes
+union all
+select 12 as bloco, 'solicitação sem aprovador/rodada ou aberta duplicada por (versão, aprovador)' as verificacao, (select count(*) from (
+select id from public.approval_requests where approver_id is null or submission_id is null
+union all
+select (array_agg(id))[1] from public.approval_requests where status = 'aberta' group by version_id, approver_id having count(*) > 1
+) t) as violacoes
+union all
+select 13 as bloco, 'funções SECURITY DEFINER sem search_path vazio' as verificacao, (select count(*) from (
+select n.nspname || '.' || p.proname as funcao
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname in ('public', 'app') and p.prosecdef
+  and not coalesce(p.proconfig @> array['search_path=""'], false)
+  -- Exceção única: a função oficial do RLS automático do Supabase (public.rls_auto_enable), validada por inteiro
+  -- (ver preflight.sql). Retorna event_trigger: não pode ser chamada por ninguém, só disparada pelo event trigger.
+  and not coalesce((p.proname = 'rls_auto_enable' and p.pronamespace = 'public'::regnamespace
+    and p.pronargs = 0 and p.prorettype = 'event_trigger'::regtype
+    and p.prolang = (select l.oid from pg_language l where l.lanname = 'plpgsql')
+    and p.prosecdef and p.proowner = 'postgres'::regrole
+    and p.proconfig = array['search_path=pg_catalog']
+    and p.prosrc ~* 'pg_event_trigger_ddl_commands\(\)' and p.prosrc ~* 'enable row level security'
+    and p.prosrc !~* '\m(grant|revoke|drop|truncate|copy|dblink|http)\M|insert\s+into|delete\s+from|update\s+\S+\s+set|create\s+(role|user|function|extension)|set\s+role'
+    and cardinality(regexp_split_to_array(lower(p.prosrc), '\mexecute\M')) = 2
+    and exists (select 1 from pg_event_trigger e
+                where e.evtfoid = p.oid and e.evtname = 'ensure_rls' and e.evtevent = 'ddl_command_end'
+                  and e.evtenabled in ('O', 'A')
+                  and e.evttags @> array['CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO']
+                  and e.evttags <@ array['CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO'])), false)
+) t) as violacoes
+union all
+select 14 as bloco, 'políticas que não são exclusivas do papel authenticated' as verificacao, (select count(*) from (
+select tablename, policyname, roles
+from pg_policies
+where schemaname in ('public', 'storage') and tablename in (
+    'organizations', 'profiles', 'clients', 'approvers', 'projects', 'materials', 'material_versions',
+    'material_files', 'approval_requests', 'approval_links', 'comments', 'decisions', 'audit_events', 'objects',
+    'approver_invites'
+  )
+  and roles::text <> '{authenticated}'
+) t) as violacoes
+union all
+select 15 as bloco, 'bucket "materials" ausente ou público ou sem limites' as verificacao, (select count(*) from (
+select 'bucket materials inexistente, público ou sem limites' as problema
+where not exists (
+  select 1 from storage.buckets
+  where id = 'materials' and public = false and file_size_limit is not null and allowed_mime_types is not null
+)
+) t) as violacoes
+union all
+select 16 as bloco, 'políticas de storage.objects fora do bucket materials (nenhuma política pode ser genérica)' as verificacao, (select count(*) from (
+select policyname
+from pg_policies
+where schemaname = 'storage' and tablename = 'objects'
+  and policyname like 'materials_objects_%'
+  and coalesce(qual, '') || coalesce(with_check, '') not like '%materials%'
+) t) as violacoes
+union all
+select 17 as bloco, 'política de UPDATE em storage.objects para o app (uploads não podem sobrescrever)' as verificacao, (select count(*) from (
+select policyname
+from pg_policies
+where schemaname = 'storage' and tablename = 'objects' and cmd in ('UPDATE', 'ALL')
+  and 'authenticated' = any (roles)
+) t) as violacoes
+union all
+select 18 as bloco, 'cadastro livre — perfis sem usuário correspondente no Auth' as verificacao, (select count(*) from (
+select p.id
+from public.profiles p left join auth.users u on u.id = p.id
+where u.id is null
+) t) as violacoes
+union all
+select 19 as bloco, 'convites de aprovador graváveis diretamente pelo app (só as funções gravam)' as verificacao, (select count(*) from (
+select 'approver_invites aceita escrita direta do app' as problema
+where has_any_column_privilege('authenticated', 'public.approver_invites', 'INSERT,UPDATE')
+   or has_table_privilege('authenticated', 'public.approver_invites', 'DELETE')
+   or has_any_column_privilege('anon', 'public.approver_invites', 'SELECT,INSERT,UPDATE')
+) t) as violacoes
+union all
+select 20 as bloco, 'gatilhos de auditoria ausentes (clientes, projetos, aprovadores, convites)' as verificacao, (select count(*) from (
+select t.tabela
+from (values ('clients'), ('projects'), ('approvers'), ('approver_invites')) as t(tabela)
+where not exists (
+  select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
+  where c.relname = t.tabela and g.tgname = t.tabela || '_audit_row' and not g.tgisinternal
+)
+) t) as violacoes
+union all
+select 21 as bloco, 'guarda de cliente arquivado ausente (projetos e aprovadores)' as verificacao, (select count(*) from (
+select t.tabela
+from (values ('projects'), ('approvers')) as t(tabela)
+where not exists (
+  select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
+  where c.relname = t.tabela and g.tgname = t.tabela || '_guard_active_client' and not g.tgisinternal
+)
+) t) as violacoes
+union all
+select 22 as bloco, 'índice único do nome do cliente (sem diferenciar caixa) ausente' as verificacao, (select count(*) from (
+select 'clients_org_name_ci_key ausente' as problema
+where not exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'clients_org_name_ci_key')
+) t) as violacoes
+union all
+select 23 as bloco, 'login por cliente (unique profile_id, client_id) ausente, ou unique antigo de profile_id ainda presente' as verificacao, (select count(*) from (
+select 'approvers_profile_client_key ausente' as problema
+where not exists (select 1 from pg_constraint where conname = 'approvers_profile_client_key')
+union all select 'approvers_profile_id_key ainda existe'
+where exists (select 1 from pg_constraint where conname = 'approvers_profile_id_key')
+) t) as violacoes
+union all
+select 24 as bloco, 'eventos de auditoria com nome, e-mail ou texto livre no metadata (só ids, papel e colunas)' as verificacao, (select count(*) from (
+select id, action
+from public.audit_events
+where metadata ?| array['name', 'email', 'full_name', 'job_title', 'note', 'body', 'title']
+) t) as violacoes
+union all
+select 25 as bloco, 'gatilhos de material ausentes (trava de conteúdo, trava de status e guarda de cliente arquivado)' as verificacao, (select count(*) from (
+select t.nome as gatilho
+from (values ('materials_guard_content'), ('materials_guard_status'), ('materials_guard_active_client')) as t(nome)
+where not exists (
+  select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
+  where c.relname = 'materials' and g.tgname = t.nome and not g.tgisinternal
+)
+) t) as violacoes
+union all
+select 26 as bloco, 'auditoria de materiais ausente (gatilho em INSERT, UPDATE e DELETE)' as verificacao, (select count(*) from (
+select 'materials_audit_row ausente ou sem INSERT/UPDATE/DELETE' as problema
+where not exists (
+  select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
+  where c.relname = 'materials' and g.tgname = 'materials_audit_row' and not g.tgisinternal
+    and (g.tgtype & 28) = 28
+)
+) t) as violacoes
+union all
+select 27 as bloco, 'colunas protegidas de materials graváveis pelo app (identificadores, status, tipo, autoria)' as verificacao, (select count(*) from (
+select c.col as coluna_com_update
+from (values ('id'), ('project_id'), ('client_id'), ('type'), ('status'), ('created_by'), ('created_at'), ('updated_at')) as c(col)
+where has_column_privilege('authenticated', 'public.materials', c.col, 'UPDATE')
+union all
+select c.col || ' (insert)'
+from (values ('id'), ('status'), ('created_at'), ('updated_at')) as c(col)
+where has_column_privilege('authenticated', 'public.materials', c.col, 'INSERT')
+union all
+select 'anon com privilégio em materials'
+where has_any_column_privilege('anon', 'public.materials', 'SELECT,INSERT,UPDATE')
+) t) as violacoes
+union all
+select 28 as bloco, 'tabelas do schema app acessíveis pela API ou sem RLS (os tíquetes de revisão não podem ser lidos nem forjados)' as verificacao, (select count(*) from (
+select c.relname as tabela
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'app' and c.relkind = 'r'
+  and (not c.relrowsecurity
+       or has_table_privilege('anon', c.oid, 'SELECT,INSERT,UPDATE,DELETE')
+       or has_table_privilege('authenticated', c.oid, 'SELECT,INSERT,UPDATE,DELETE')
+       or has_table_privilege('service_role', c.oid, 'SELECT,INSERT,UPDATE,DELETE'))
+) t) as violacoes
+union all
+select 29 as bloco, 'funções internas de tíquete e de trava executáveis por algum papel da API (nenhuma pode ser)' as verificacao, (select count(*) from (
+select p.proname as funcao, r.rolname as papel
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+cross join (values ('anon'), ('authenticated'), ('service_role')) as r(rolname)
+where n.nspname = 'app'
+  and p.proname in ('grant_revision_ticket', 'has_revision_ticket', 'materials_guard_status', 'materials_guard_content',
+                   'freeze_version_content', 'requests_freeze_content', 'material_files_validate')
+  and has_function_privilege(r.rolname, p.oid, 'EXECUTE')
+) t) as violacoes
+union all
+select 30 as bloco, 'regras de arquivos e conteúdo por versão ausentes ou abertas (C1 e C2)' as verificacao, (select count(*) from (
+select 'material_files_validate ausente' as problema
+where not exists (
+  select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
+  where c.relname = 'material_files' and g.tgname = 'material_files_validate' and not g.tgisinternal
+)
+union all select 'requests_freeze_content ausente'
+where not exists (
+  select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
+  where c.relname = 'approval_requests' and g.tgname = 'requests_freeze_content' and not g.tgisinternal
+)
+union all select 'material_version_contents ausente ou sem RLS'
+where not exists (
+  select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relname = 'material_version_contents' and c.relrowsecurity
+)
+union all select 'material_version_contents gravável pelo app ou visível ao anônimo'
+where has_any_column_privilege('authenticated', to_regclass('public.material_version_contents'), 'INSERT,UPDATE')
+   or has_table_privilege('authenticated', to_regclass('public.material_version_contents'), 'DELETE')
+   or has_any_column_privilege('anon', to_regclass('public.material_version_contents'), 'SELECT,INSERT,UPDATE')
+union all select 'imutabilidade de material_version_contents ausente'
+where not exists (
+  select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid
+  where c.relname = 'material_version_contents' and g.tgname = 'version_contents_immutable' and not g.tgisinternal
+)
+) t) as violacoes
+union all
+select 31 as bloco, 'aprovador do portal lendo linhas de outros aprovadores (a política precisa restringir ao próprio profile_id)' as verificacao, (select count(*) from (
+select 'approvers_select_portal ausente ou sem restrição ao próprio profile_id' as problema
+where not exists (
+  select 1 from pg_policies
+  where schemaname = 'public' and tablename = 'approvers' and policyname = 'approvers_select_portal'
+    and qual like '%profile_id%'
+)
+) t) as violacoes
+order by bloco;

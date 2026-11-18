@@ -16,6 +16,7 @@
     "env:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/check-env.mjs",
     "env:check:prod": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/check-env.mjs --production",
     "email:test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/send-test-email.mjs",
+    "sql:copy": "node scripts/copy-sql.mjs",
     "net:check": "node --env-file-if-exists=.env.local scripts/check-network.mjs"
   },
   "dependencies": {
