@@ -17,7 +17,7 @@ import {
 let db: TestDb;
 
 beforeAll(async () => {
-  db = await createTestDb();
+  db = await createTestDb({ serviceRoleFullAccess: true }); // prova as travas até para um servidor com ALL (mínimo real: service-role-grants.test.ts)
   await seedBase(db);
 }, 180_000);
 

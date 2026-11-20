@@ -24,8 +24,10 @@ Fonte: `supabase/sql-manifest.sha256` (testado em `src/test/sql-manifest.test.ts
 | 13 | `20261106120000_approval_per_approver` (D1) | `a58f7d39842044efbcb227c28a226a9c4e75d13fffb8a0ebc10c85a950fc4ae0` | 13987 |
 | 14 | `20261106120100_approval_link_flow` (D2) | `a099ab3938b46961f9f8bc61094915693574338845bf1b04ab2ac28261bbd51b` | 14400 |
 | 15 | `20261107120000_approvers_portal_own_rows` (D3) | `745455e87824aa0e6e63107de8de651a90c14e4d544a84a4b75ee7aa8e80b4cb` | 1104 |
+| 16 | `20261120120000_service_role_grants` (**pendente em produção**) | `2baf78aa0ad3fab1a6d379b63b1bfa9e137bc2a193b67e023b77944d98d27704` | 3424 |
 | — | `supabase/preflight.sql` (v2, aceita o RLS automático do Supabase) | `411bce6a6527ad9bda2b0a613f05e6fd42cfa294fad2ca5dcda5c22a95382552` | — |
 | — | `supabase/verify-summary.sql` (31 blocos em 1 tabela, gerado do `verify.sql`) | `6f9429eedfdf74a8e95cb6e9cf1c4e5c02da478d63c4e5f7ae9a639bb6e11a8a` | — |
+| — | `supabase/verify-service-role.sql` (privilégios do service_role, antes/depois da migration 16) | `03004a5f913b7b49fa4aa9a452d688d93f56730dfcbe853cfad1aa09d8e593c1` | — |
 
 As migrations 05–15 coincidem com os hashes registrados em `MIGRACOES-A2/C/D.md` (aplicadas no dev). As migrations 01–04 não tinham hash nos docs; o manifesto passa a ser o registro.
 
@@ -93,3 +95,16 @@ npm run sql:copy -- diagnostico-audit-row-change
 Cole no SQL Editor e clique em Run. Esperado: `tamanho do corpo` com CR > 0, `md5 do corpo, bruto` DIVERGE, `md5 do corpo sem os CR` ok, dono/SECURITY DEFINER/search_path ok, EXECUTE ok, 4 triggers ok e VEREDITO "IGUAL à migration 08 exceto as quebras de linha (CRLF em vez de LF)… falso positivo". Se o veredito for "DIFERENTE… PARE", rode `npm run sql:copy -- diagnostico-audit-row-change-corpo` e traga o resultado (é código do repositório, sem segredos). Só então, com o diagnóstico da 08 (`npm run sql:copy -- diagnostico-migration-08`) em **B**, a 08 conta como aplicada; a 09 continua **não** autorizada até lá.
 
 **Correção.** Só no diagnóstico (já feita). Nenhuma migration muda, nada é alterado no banco, e os hashes das migrations seguem iguais. Efeito prático: tudo o que o editor do navegador gravou em produção terá CRLF dentro dos corpos de função; é inofensivo, mas **qualquer comparação de hash de corpo no banco deve ignorar o CR**.
+
+## 5. Migration 16: privilégios do service_role (achado em 2026-11-20; NÃO aplicada)
+
+**Problema.** Desde 30/05/2026 os projetos novos do Supabase não dão privilégios automáticos nas tabelas do schema `public`. O de produção nasceu assim: `service_role` sem SELECT em `profiles` (42501, HTTP 403) e nas outras 16 tabelas (`tabelas_sem_leitura_para_service_role = 17`). As migrations 1 a 15 concedem as tabelas ao `authenticated`, mas nunca ao `service_role`: o desenvolvimento (criado antes, com ALL por padrão) escondeu a falta. Sem a correção falham o bootstrap, os convites, a aprovação por link, a limpeza e o backup dos arquivos.
+
+**O que a migration 16 faz.** Revoga tudo do `service_role` em `public` e concede o mínimo que o código usa: SELECT em 11 tabelas (`organizations`, `profiles`, `clients`, `approvers`, `approver_invites`, `materials`, `material_versions`, `material_version_contents`, `material_files`, `comments`, `decisions`); INSERT por coluna em `organizations` e `profiles`; DELETE em `profiles` (desfaz convite com falha); UPDATE por coluna em `approvers.profile_id` e em quatro colunas de `approver_invites`. Nada em `projects`, `approval_*`, `audit_events`, schema `app` nem sequências (os ids são uuid); sem TRUNCATE/REFERENCES/TRIGGER. Não mexe em RLS, políticas, `anon`, `authenticated` nem funções. Prova: `src/test/db/service-role-grants.test.ts` (reproduz o erro de produção sem a migration, executa cada operação do código depois dela, nega todo o resto e compara os resumos antes/depois).
+
+**Procedimento (só com a sua autorização; uma etapa por vez, no SQL Editor do projeto `nvtj…`).**
+1. `npm run sql:copy -- verify-service-role` e execute. **Esperado ANTES:** blocos 1 e 2 = 12; blocos 3 a 9 = 0. Guarde as impressões (blocos 10 a 14).
+2. `npm run sql:copy -- 16` (confere o SHA-256 acima) e execute a migration. Não repita se der erro: traga a mensagem.
+3. Rode `verify-service-role` de novo. **Esperado DEPOIS:** blocos 1 a 9 = 0 e as impressões 10 a 14 **idênticas** às de antes.
+4. Rode `supabase/verify-summary.sql` (31/31 em 0) e `node scripts/bootstrap-admin.mjs … --check-connection` (agora deve dizer "Conexão OK. Perfis existentes: 0").
+No desenvolvimento a migration também reduz o ALL padrão ao mínimo (bloco 3 mostra o excesso antes); só aplique lá se decidir alinhar os ambientes.

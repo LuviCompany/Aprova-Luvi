@@ -43,6 +43,11 @@ const SUPABASE_STUB = `
   grant all on all tables in schema storage to anon, authenticated, service_role;
 
   grant usage on schema public to anon, authenticated, service_role;
+`;
+
+// Privilégios automáticos dos projetos ANTIGOS do Supabase (o desenvolvimento). Os projetos criados depois de
+// 30/05/2026 não os têm: tabelas novas nascem sem nenhum privilégio para os papéis da API.
+const LEGACY_DEFAULT_PRIVILEGES = `
   -- O Supabase concede aos papéis da API tanto por schema quanto GLOBALMENTE (para postgres e
   -- supabase_admin; o pré-voo no projeto real mostrou esses padrões). Os dois são reproduzidos
   -- aqui: uma migration que só revogue "IN SCHEMA public" deixaria o padrão global ativo.
@@ -53,20 +58,37 @@ const SUPABASE_STUB = `
   alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
 `;
 
+export type SupabaseDefaults = "legacy" | "2026";
+
 export type TestDb = PGlite & {
   asUser<T>(userId: string, fn: () => Promise<T>): Promise<T>;
   asService<T>(fn: () => Promise<T>): Promise<T>;
   asAnon<T>(fn: () => Promise<T>): Promise<T>;
 };
 
-export async function createTestDb(options: { migrate?: boolean } = {}): Promise<TestDb> {
+export async function createTestDb(
+  options: {
+    migrate?: boolean;
+    /** "legacy" (padrão): privilégios automáticos do projeto de desenvolvimento. "2026": como o projeto de produção. */
+    supabaseDefaults?: SupabaseDefaults;
+    /** Aplica só as migrations anteriores a este prefixo de arquivo (ex.: "20261120120000"). */
+    stopBefore?: string;
+    /**
+     * Depois das migrations, devolve ALL ao service_role. Só para testes que provam que as TRAVAS (gatilhos, imutabilidade)
+     * valem até para um servidor com todos os privilégios; o privilégio mínimo real (migration 16) é testado em
+     * service-role-grants.test.ts e privileges.test.ts.
+     */
+    serviceRoleFullAccess?: boolean;
+  } = {},
+): Promise<TestDb> {
   const db = new PGlite() as TestDb;
   await db.exec(SUPABASE_STUB);
+  if ((options.supabaseDefaults ?? "legacy") === "legacy") await db.exec(LEGACY_DEFAULT_PRIVILEGES);
 
   const files = options.migrate === false
     ? []
     : readdirSync(MIGRATIONS_DIR)
-        .filter((f) => f.endsWith(".sql"))
+        .filter((f) => f.endsWith(".sql") && (!options.stopBefore || f < options.stopBefore))
         .sort();
   for (const file of files) {
     try {
@@ -75,6 +97,8 @@ export async function createTestDb(options: { migrate?: boolean } = {}): Promise
       throw new Error(`Falha ao aplicar ${file}: ${(error as Error).message}`);
     }
   }
+
+  if (options.serviceRoleFullAccess) await db.exec("grant all on all tables in schema public to service_role");
 
   const withRole = async <T>(role: string, sub: string | null, fn: () => Promise<T>): Promise<T> => {
     await db.exec(`select set_config('request.jwt.claim.sub', '${sub ?? ""}', false)`);

@@ -176,6 +176,66 @@ const stop = (message) => {
   throw new BootstrapError(message);
 };
 
+/** Tira de um texto qualquer chave informada, chave `sb_…` e JWT (defesa extra: mensagens do servidor nunca devem ter segredos). */
+/**
+ * @param {unknown} text
+ * @param {string[]} [secrets]
+ */
+export function redactSecrets(text, secrets = []) {
+  let out = String(text ?? "");
+  for (const secret of secrets) if (secret && secret.length >= 8) out = out.split(secret).join("[removido]");
+  return out.replace(/sb_(secret|publishable)_[A-Za-z0-9_-]+/g, "[removido]").replace(/eyJ[A-Za-z0-9_-]{10,}(\.[A-Za-z0-9_-]+){1,2}/g, "[removido]");
+}
+
+const NETWORK = /fetch failed|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|UND_ERR|network|socket|getaddrinfo|AbortError/i;
+const AUTH_CODES = new Set(["PGRST300", "PGRST301", "bad_jwt", "invalid_jwt", "no_authorization", "not_admin", "invalid_api_key"]);
+
+/**
+ * Classifica uma falha do Supabase (API de dados ou Auth) SEM revelar credenciais: só status HTTP, código do erro e
+ * a mensagem do servidor (com qualquer segredo removido). `failure` = { status, code, message, name }.
+ */
+/**
+ * @param {{ status?: number, code?: string, message?: string, name?: string } | null | undefined} failure
+ * @param {{ stage?: string, host?: string, secrets?: string[] }} [context]
+ */
+export function diagnoseSupabaseFailure(failure, { stage = "", host = "", secrets = [] } = {}) {
+  const status = Number.isFinite(failure?.status) ? Number(failure.status) : undefined;
+  const code = failure?.code ? String(failure.code) : "";
+  const message = String(failure?.message ?? "");
+  const name = String(failure?.name ?? "");
+  let kind = "desconhecido";
+  let advice = "falha inesperada; leve o status e o código acima ao responsável.";
+  if (status === 0 || NETWORK.test(message) || (status === undefined && /FetchError|TypeError|RetryableFetch/.test(name))) {
+    kind = "rede";
+    advice = "não foi possível falar com o Supabase (rede, DNS ou URL do projeto). Confira SUPABASE_URL e a conexão (npm run net:check).";
+  } else if (code === "42501" || (status === 403 && !AUTH_CODES.has(code))) {
+    kind = "permissao";
+    advice =
+      "a chave foi aceita, mas o papel service_role não tem permissão nesta tabela. Projetos criados depois de 30/05/2026 não recebem privilégios automáticos: falta a migration supabase/migrations/20261120120000_service_role_grants.sql (rode antes supabase/verify-service-role.sql).";
+  } else if (status === 401 || AUTH_CODES.has(code) || /invalid api key|apikey|jwt/i.test(message)) {
+    kind = "autenticacao";
+    advice = "o Supabase recusou a chave (inválida, revogada ou de OUTRO projeto). Use a chave secreta (sb_secret_…) do projeto " + (host || "informado em SUPABASE_URL") + ".";
+  } else if (code === "PGRST106") {
+    kind = "schema";
+    advice = "o schema public não está exposto pela API de dados (Settings → API → Exposed schemas).";
+  } else if (code === "PGRST205" || code === "42P01" || status === 404 || /schema cache|does not exist/i.test(message)) {
+    kind = "tabela";
+    advice = "a tabela não existe ou não está visível pela API. As migrations foram aplicadas NESTE projeto? Confira o host.";
+  } else if (status !== undefined && status >= 500) {
+    kind = "servico";
+    advice = "o Supabase respondeu com erro de servidor ou o projeto está pausado/indisponível. Veja o painel do projeto.";
+  }
+  const detail = redactSecrets(message, secrets).replace(/\s+/g, " ").trim().slice(0, 200);
+  const facts = [status === undefined ? null : "HTTP " + status, code ? "código " + redactSecrets(code, secrets) : null, detail ? "mensagem: " + detail : null].filter(Boolean);
+  return { kind, text: stage + " — " + advice + (facts.length ? " [" + facts.join("; ") + "]" : " [sem status nem corpo de resposta]") };
+}
+
+const failure = (plan, stage, error, status) =>
+  diagnoseSupabaseFailure(
+    { status: status ?? error?.status, code: error?.code, message: error?.message, name: error?.name },
+    { stage, host: plan.supabaseHost, secrets: [plan.secret] },
+  ).text;
+
 /**
  * Procura o administrador de uma execução anterior que parou no meio (perfil criado, convite não entregue).
  * Só aceita o caso inequívoco: UM único perfil, o mesmo e-mail, papel admin e conta do Auth que NUNCA foi
@@ -184,8 +244,9 @@ const stop = (message) => {
 async function findResumableAdmin(admin, plan, count) {
   const refuse = () => stop("Já existem perfis cadastrados. O bootstrap só roda em um banco vazio (ou para retomar o MESMO administrador que ainda não ativou a conta).");
   if (count !== 1) refuse();
-  const { data: profile, error } = await admin.from("profiles").select("id, email, role").eq("email", plan.email).maybeSingle();
-  if (error || !profile || profile.role !== "admin") refuse();
+  const { data: profile, error, status } = await admin.from("profiles").select("id, email, role").eq("email", plan.email).maybeSingle();
+  if (error) stop(failure(plan, "Não foi possível ler o perfil existente", error, status));
+  if (!profile || profile.role !== "admin") refuse();
   const found = await admin.auth.admin.getUserById(profile.id);
   const user = found.data?.user;
   if (found.error || !user) stop("O perfil existe, mas a conta correspondente não foi encontrada no Auth. Não repita o bootstrap: traga este erro ao responsável.");
@@ -203,11 +264,12 @@ async function findResumableAdmin(admin, plan, count) {
  */
 export async function runBootstrap(plan, admin, log = console.log) {
   // Leitura: confirma que a chave secreta funciona na API de dados e que as migrations existem.
-  const { count, error: countError } = await admin.from("profiles").select("id", { count: "exact", head: true });
-  if (countError) stop(`Não foi possível consultar profiles (as migrations foram aplicadas? a chave é a secreta?): ${countError.message}`);
+  // (GET com limit(0), não HEAD: a resposta de erro de um HEAD não tem corpo e esconderia o código e a causa.)
+  const { count, error: countError, status: countStatus } = await admin.from("profiles").select("id", { count: "exact" }).limit(0);
+  if (countError) stop(failure(plan, "Não foi possível consultar a tabela profiles", countError, countStatus));
   // Leitura: confirma que a chave secreta funciona na API administrativa do Auth.
   const users = await admin.auth.admin.listUsers({ page: 1, perPage: 1 });
-  if (users.error) stop(`A chave não conseguiu usar a API administrativa do Auth: ${users.error.message}`);
+  if (users.error) stop(failure(plan, "A chave não conseguiu usar a API administrativa do Auth", users.error, users.error.status));
 
   if (plan.mode === "check-connection") {
     log(`\nConexão OK. Perfis existentes: ${count ?? 0}. Nada foi alterado.`);
@@ -218,10 +280,12 @@ export async function runBootstrap(plan, admin, log = console.log) {
 
   let orgId = null;
   if (!resumeUserId) {
-    let { data: org } = await admin.from("organizations").select("id").eq("slug", "luvi-company").maybeSingle();
+    const found = await admin.from("organizations").select("id").eq("slug", "luvi-company").maybeSingle();
+    if (found.error) stop(failure(plan, "Não foi possível ler a organização", found.error, found.status));
+    let org = found.data;
     if (!org) {
       const created = await admin.from("organizations").insert({ name: "Luvi Company", slug: "luvi-company" }).select("id").single();
-      if (created.error) stop(`Falha ao criar a organização: ${created.error.message}`);
+      if (created.error) stop(failure(plan, "Falha ao criar a organização", created.error, created.status));
       org = created.data;
     }
     orgId = org.id;
@@ -262,7 +326,7 @@ export async function runBootstrap(plan, admin, log = console.log) {
     });
     if (profile.error) {
       await admin.auth.admin.deleteUser(userId); // não deixa conta órfã sem perfil
-      stop(`Falha ao criar o perfil: ${profile.error.message}`);
+      stop(failure(plan, "Falha ao criar o perfil", profile.error, profile.status));
     }
   }
 

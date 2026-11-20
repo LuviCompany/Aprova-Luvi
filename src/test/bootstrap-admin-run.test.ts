@@ -40,9 +40,9 @@ function fakeAdmin(s: State) {
   return {
     from(table: "profiles" | "organizations") {
       return {
-        select(_cols: string, opts?: { head?: boolean }) {
+        select(_cols: string, opts?: { head?: boolean; count?: string }) {
           const rows = (table === "profiles" ? s.profiles : s.orgs) as Array<Record<string, unknown>>;
-          if (opts?.head) return Promise.resolve({ count: rows.length, error: null });
+          if (opts?.count) return { limit: async () => ({ count: rows.length, data: [], error: null, status: 200 }) };
           let filtered = rows;
           const chain = {
             eq(key: string, value: unknown) {

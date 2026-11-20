@@ -100,9 +100,14 @@ describe("tabelas", () => {
     expect(await hasTable("authenticated", "approver_invites", "DELETE")).toBe(false);
   });
 
-  it("o servidor (service_role) mantém acesso total", async () => {
+  it("o servidor (service_role) tem só o necessário: leitura em 11 tabelas, sem TRUNCATE/REFERENCES/TRIGGER (migration 16)", async () => {
+    const leitura = new Set([
+      "organizations", "profiles", "clients", "approvers", "approver_invites", "materials", "material_versions",
+      "material_version_contents", "material_files", "comments", "decisions",
+    ]);
     for (const t of await tables()) {
-      expect(await hasTable("service_role", t, "SELECT,INSERT,UPDATE"), t).toBe(true);
+      expect(await hasTable("service_role", t, "SELECT"), t).toBe(leitura.has(t));
+      expect(await hasTable("service_role", t, "TRUNCATE,REFERENCES,TRIGGER"), t).toBe(false);
     }
   });
 });
