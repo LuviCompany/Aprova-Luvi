@@ -32,14 +32,16 @@
  *    você mesmo e nunca cole em chat, e-mail ou ticket.
  */
 import { pathToFileURL } from "node:url";
-import { classifyKey } from "../src/lib/env.ts";
+import { PRODUCTION_SUPABASE_HOST, classifyKey } from "../src/lib/env.ts";
 
 export const PRODUCTION_HOSTS = ["aprova.luvicompany.com.br"];
 /**
  * Trava de projeto: o site de produção só pode ser ligado ao projeto Supabase de produção, e vice-versa.
  * O ID do projeto não é segredo. Sem esse par, o script recusa mesmo com --allow-production e --project-host.
+ * Fonte única: a mesma constante que o env:check:prod e o backup do Storage usam (src/lib/env.ts), para os
+ * travamentos nunca divergirem entre si. "Aprova Luvi - Produção".
  */
-export const PRODUCTION_PROJECT_HOSTS = ["nvtiynmebffxctqlrwqo.supabase.co"]; // "Aprova Luvi - Produção"
+export const PRODUCTION_PROJECT_HOSTS = [PRODUCTION_SUPABASE_HOST];
 
 const FLAGS = new Set(["execute", "check-connection", "allow-production", "send-email"]);
 

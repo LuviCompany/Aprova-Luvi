@@ -6,7 +6,7 @@ Projeto Vercel `aprova-luvi` (equipe Luvi Company, plano Hobby). A branch de pro
 
 | Nome | Valor | Segredo? |
 |---|---|---|
-| `SUPABASE_URL` | `https://nvtiynmebffxctqlrwqo.supabase.co` | não |
+| `SUPABASE_URL` | `https://nvtjynmebffxctqlrwqo.supabase.co` | não |
 | `SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_…` do projeto **de produção** (Project Settings → API Keys) | não (é pública) |
 | `SUPABASE_SECRET_KEY` | `sb_secret_…` do projeto **de produção** | **sim: Sensitive** |
 | `APP_URL` | `https://aprova.luvicompany.com.br` | não |
@@ -32,12 +32,12 @@ Set-Clipboard -Value " "
 Rotacionar `APPROVAL_LINK_SECRET` depois invalida só códigos e sessões em curso (links seguem válidos).
 
 ## 2. Verificação `env:check:prod` (antes de publicar)
-A checagem de lançamento **recusa** `SUPABASE_URL` que não seja o projeto de produção (`nvtiynmebffxctqlrwqo.supabase.co`) e `APP_URL` que não seja `https://aprova.luvicompany.com.br`, além de e-mail simulado, demo ligada, segredo curto e localhost. Ela **não carrega o `.env.local`** e não abre conexão. No **seu** PowerShell, com as variáveis só na sessão (valores digitados de forma oculta):
+A checagem de lançamento **recusa** `SUPABASE_URL` que não seja o projeto de produção (`nvtjynmebffxctqlrwqo.supabase.co`) e `APP_URL` que não seja `https://aprova.luvicompany.com.br`, além de e-mail simulado, demo ligada, segredo curto e localhost. Ela **não carrega o `.env.local`** e não abre conexão. No **seu** PowerShell, com as variáveis só na sessão (valores digitados de forma oculta):
 
 ```powershell
 cd "C:\Users\redme\OneDrive\Área de Trabalho\Sistemas\Aprova Luvi\aprova-luvi"
 function Read-Secret($nome) { $s = Read-Host $nome -AsSecureString; [System.Net.NetworkCredential]::new("", $s).Password }
-$env:SUPABASE_URL = "https://nvtiynmebffxctqlrwqo.supabase.co"
+$env:SUPABASE_URL = "https://nvtjynmebffxctqlrwqo.supabase.co"
 $env:APP_URL = "https://aprova.luvicompany.com.br"
 $env:SUPABASE_PUBLISHABLE_KEY = Read-Secret "SUPABASE_PUBLISHABLE_KEY (producao)"
 $env:SUPABASE_SECRET_KEY = Read-Secret "SUPABASE_SECRET_KEY (producao)"
@@ -48,7 +48,7 @@ $env:EMAIL_FROM = "Aprova Luvi <" + "admin@luvicompany.com.br" + ">"
 npm run env:check:prod
 ```
 
-Resultado esperado: `supabaseHost nvtiynmebffxctqlrwqo.supabase.co`, `siteUrl https://aprova.luvicompany.com.br`, `emailProvider resend`, `linkSecret definido`, `demoMode false` e **"Configuração válida."** (nenhum valor secreto é impresso). Depois: `Remove-Item Env:SUPABASE_URL,Env:APP_URL,Env:SUPABASE_PUBLISHABLE_KEY,Env:SUPABASE_SECRET_KEY,Env:APPROVAL_LINK_SECRET,Env:EMAIL_PROVIDER,Env:RESEND_API_KEY,Env:EMAIL_FROM`.
+Resultado esperado: `supabaseHost nvtjynmebffxctqlrwqo.supabase.co`, `siteUrl https://aprova.luvicompany.com.br`, `emailProvider resend`, `linkSecret definido`, `demoMode false` e **"Configuração válida."** (nenhum valor secreto é impresso). Depois: `Remove-Item Env:SUPABASE_URL,Env:APP_URL,Env:SUPABASE_PUBLISHABLE_KEY,Env:SUPABASE_SECRET_KEY,Env:APPROVAL_LINK_SECRET,Env:EMAIL_PROVIDER,Env:RESEND_API_KEY,Env:EMAIL_FROM`.
 
 ## 3. Preview protegido antes de atualizar a `main`
 

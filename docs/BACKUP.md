@@ -1,6 +1,6 @@
 # Aprova Luvi — backup e recuperação (produção, plano Free do Supabase)
 
-Estado em **2026-11-18**. O projeto de produção (`nvtiynmebffxctqlrwqo`) está no plano **Free**: **não há backup automático nem recuperação a um ponto no tempo**. O Supabase recomenda, nesse plano, exportar os dados com regularidade; o backup do banco **também não inclui os arquivos do Storage**. Este roteiro cobre o que falta. O banco de desenvolvimento ("DB Aprova Luvi") **não é alvo** de nada aqui.
+Estado em **2026-11-18**. O projeto de produção (`nvtjynmebffxctqlrwqo`) está no plano **Free**: **não há backup automático nem recuperação a um ponto no tempo**. O Supabase recomenda, nesse plano, exportar os dados com regularidade; o backup do banco **também não inclui os arquivos do Storage**. Este roteiro cobre o que falta. O banco de desenvolvimento ("DB Aprova Luvi") **não é alvo** de nada aqui.
 
 > **Nada deste roteiro foi executado contra o Supabase real** (pedido expresso) e esta máquina ainda não tem `pg_dump`/`psql`. A parte de arquivos (Node) tem testes automatizados; a parte do PostgreSQL segue a documentação do Supabase e **precisa de um ensaio** (seção 6) antes de você confiar nela. Recomendação: ensaiar primeiro com o projeto de desenvolvimento (só leitura) para achar problemas de comando com dados fictícios.
 
@@ -59,7 +59,7 @@ Com as chaves **só na sessão** (a chave `sb_secret_…` é lida do painel/gere
 
 ```powershell
 function Read-Secret($n) { $s = Read-Host $n -AsSecureString; [Net.NetworkCredential]::new("", $s).Password }
-$env:SUPABASE_URL = "https://nvtiynmebffxctqlrwqo.supabase.co"; $env:SUPABASE_SECRET_KEY = Read-Secret "SUPABASE_SECRET_KEY (producao)"
+$env:SUPABASE_URL = "https://nvtjynmebffxctqlrwqo.supabase.co"; $env:SUPABASE_SECRET_KEY = Read-Secret "SUPABASE_SECRET_KEY (producao)"
 node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts\backup-tools.mjs storage-backup --out D:\Backups\AprovaLuvi\storage
 ```
 

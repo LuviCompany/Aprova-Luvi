@@ -198,7 +198,7 @@ export interface EnvDiagnosis {
  * (`env:check:prod`) usa estes valores, para que uma publicação nunca saia apontando para o projeto de
  * desenvolvimento ou para outro domínio. O ID do projeto não é segredo.
  */
-export const PRODUCTION_SUPABASE_HOST = "nvtiynmebffxctqlrwqo.supabase.co";
+export const PRODUCTION_SUPABASE_HOST = "nvtjynmebffxctqlrwqo.supabase.co";
 export const PRODUCTION_APP_HOST = "aprova.luvicompany.com.br";
 
 /** Diagnóstico para `npm run env:check`. Nunca devolve o valor de uma chave. */

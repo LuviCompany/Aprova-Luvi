@@ -12,7 +12,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$Dest,
   [Parameter(Mandatory = $true)][string]$DbHost,
-  [string]$ProjectRef = "nvtiynmebffxctqlrwqo",
+  [string]$ProjectRef = "nvtjynmebffxctqlrwqo",
   [int]$Port = 5432
 )
 $ErrorActionPreference = "Stop"

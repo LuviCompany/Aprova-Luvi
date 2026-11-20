@@ -1,6 +1,6 @@
 # Banco de produção — aplicação das migrations (roteiro)
 
-Projeto: **Aprova Luvi - Produção** · ID `nvtiynmebffxctqlrwqo` · `https://nvtiynmebffxctqlrwqo.supabase.co` · plano Free · região São Paulo.
+Projeto: **Aprova Luvi - Produção** · ID `nvtjynmebffxctqlrwqo` · `https://nvtjynmebffxctqlrwqo.supabase.co` · plano Free · região São Paulo.
 **Nunca** o projeto de desenvolvimento "DB Aprova Luvi" (`kswnwootbdzlhdvbhhpk`). Aplicação feita **por você, no SQL Editor, uma migration por vez**. Nada é aplicado automaticamente.
 
 ## 1. Tabela oficial (ordem, nome, SHA-256 do texto com LF)
@@ -44,7 +44,7 @@ As migrations 05–15 coincidem com os hashes registrados em `MIGRACOES-A2/C/D.m
 
 Ferramenta: `npm run sql:copy -- <n>` copia o SQL para a área de transferência **depois de conferir o SHA-256** contra o manifesto e de ler o texto de volta da área de transferência. Se falhar, **não cole**.
 
-1. **Confirmar o projeto:** no painel, o ID na URL deve ser `nvtiynmebffxctqlrwqo` e o nome "Aprova Luvi - Produção". Abra **SQL Editor → New query**.
+1. **Confirmar o projeto:** no painel, o ID na URL deve ser `nvtjynmebffxctqlrwqo` e o nome "Aprova Luvi - Produção". Abra **SQL Editor → New query**.
 2. **Pré-voo:** `npm run sql:copy -- preflight` → colar → Run. Todas as 7 linhas devem ter `violacoes = 0`. Se alguma for > 0, pare.
 3. **Migrations 01 a 15, uma por vez:** `npm run sql:copy -- 1`, colar numa query nova, Run, conferir "Success. No rows returned", repetir com 2, 3… Na **01**, o aviso "creates tables without enabling RLS" é esperado: **Run without RLS** (a RLS vem na 03). **Parar e me informar após as migrations 04, 08, 12 e 15**, ou em qualquer erro/aviso diferente.
 4. **Verificação:** `npm run sql:copy -- verify` → colar → Run. Esperado: **31 linhas, todas com `violacoes = 0`**.
