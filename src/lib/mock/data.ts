@@ -12,7 +12,7 @@ import type {
  * Dados fictícios da Fase 1. Nenhum cliente, e-mail ou arquivo aqui é real.
  * A data de referência é fixa para manter telas e testes determinísticos.
  */
-export const NOW = "2026-10-28T12:00:00-03:00";
+export { NOW } from "@/lib/demo-now";
 
 export const clients: Client[] = [
   {

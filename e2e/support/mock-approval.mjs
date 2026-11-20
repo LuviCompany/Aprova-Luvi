@@ -257,11 +257,15 @@ export async function handleApproval(c) {
     return send(res, 200, rows.map((d) => {
       const version = state.versions.find((v) => v.id === d.version_id);
       const material = state.materials.find((m) => m.id === d.material_id);
+      const client = material ? state.clients.find((c) => c.id === material.client_id) : null;
       return {
         ...d,
+        note: d.note ?? "",
         approvers: { name: d.approver_name },
         approval_requests: d.requested_at ? { created_at: d.requested_at } : null,
-        material_versions: version ? { number: version.number, materials: material ? { title: material.title } : null } : null,
+        material_versions: version
+          ? { number: version.number, materials: material ? { title: material.title, clients: client ? { name: client.name } : null } : null }
+          : null,
       };
     })), true;
   }

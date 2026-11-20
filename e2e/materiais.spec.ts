@@ -105,9 +105,10 @@ test("sem materiais: a tela é real (sem aviso de demonstração) e orienta o pr
   await expect(page.getByRole("button", { name: "Novo material" })).toBeVisible();
   expect(errors).toEqual([]);
 
-  // o histórico ainda usa dados fictícios: o aviso continua lá
+  // o histórico também é real: sem aviso e com estado vazio
   await page.goto("/admin/historico");
-  await expect(page.getByRole("note")).toContainText("dados de demonstração");
+  await expect(page.getByRole("note")).toHaveCount(0);
+  await expect(page.getByText("Nenhuma decisão registrada ainda")).toBeVisible();
   await seed();
 });
 

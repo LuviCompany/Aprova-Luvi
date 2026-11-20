@@ -11,6 +11,18 @@ const dateTimeFmt = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "America/Sao_Paulo",
 });
 
+const fullDateFmt = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  timeZone: "America/Sao_Paulo",
+});
+
+/** Data completa com ano (dd/mm/aaaa), para registros que ficam por anos, como a data de cadastro de um usuário. */
+export function formatFullDate(value: string): string {
+  return fullDateFmt.format(new Date(value));
+}
+
 export function formatDate(value: string): string {
   const iso = value.length === 10 ? `${value}T12:00:00-03:00` : value;
   return dateFmt.format(new Date(iso)).replace(".", "");

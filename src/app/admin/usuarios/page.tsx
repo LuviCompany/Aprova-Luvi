@@ -1,26 +1,106 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import { Users } from "lucide-react";
+import { EmptyState, LoadErrorState } from "@/components/admin/data-states";
 import { PageHeader } from "@/components/page-header";
-import { MockDataNotice } from "@/components/interim-data-notice";
+import { ListSkeleton } from "@/components/page-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDateTime } from "@/lib/format";
+import { ROLE_LABEL } from "@/lib/auth/roles";
+import { requireAdmin } from "@/lib/auth/session";
+import { DataLoadError } from "@/lib/clients/queries";
+import { isDemoMode } from "@/lib/env";
+import { formatDateTime, formatFullDate } from "@/lib/format";
 import { teamUsers } from "@/lib/mock/data";
-import type { TeamUser } from "@/lib/types";
+import { listTeamUsers } from "@/lib/users/queries";
 
 export const metadata: Metadata = { title: "Usuários" };
 
-const ROLE_LABEL: Record<TeamUser["role"], string> = {
-  admin: "Administrador",
-  designer: "Designer",
-  atendimento: "Atendimento",
-};
+const DESCRIPTION = "Equipe Luvi com acesso ao painel administrativo.";
 
 export default function AdminUsersPage() {
   return (
+    <Suspense fallback={<ListSkeleton />}>
+      <UsersContent />
+    </Suspense>
+  );
+}
+
+async function UsersContent() {
+  // Só o administrador. Feito no servidor, a cada requisição: designer e atendimento são enviados ao painel mesmo
+  // digitando a URL; esconder o item do menu é só conveniência (ver AdminGate).
+  const user = await requireAdmin();
+
+  // Demonstração: a equipe fictícia da Fase 1. Fora dela, nada fictício aparece.
+  if (isDemoMode()) return <UsersDemo />;
+
+  let users: Awaited<ReturnType<typeof listTeamUsers>>;
+  try {
+    users = await listTeamUsers(user.organizationId);
+  } catch (error) {
+    if (!(error instanceof DataLoadError)) throw error;
+    return (
+      <>
+        <PageHeader title="Usuários" description={DESCRIPTION} />
+        <LoadErrorState what="os usuários" />
+      </>
+    );
+  }
+
+  return (
     <>
-      <MockDataNotice />
-      <PageHeader title="Usuários" description="Equipe Luvi com acesso ao painel administrativo." />
+      <PageHeader title="Usuários" description={DESCRIPTION} />
+      {users.length === 0 ? (
+        <EmptyState icon={Users} title="Nenhum usuário da equipe encontrado" />
+      ) : (
+        <Card>
+          <CardContent>
+            <div className="overflow-x-auto rounded-xl border border-white/10">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>E-mail</TableHead>
+                    <TableHead>Papel</TableHead>
+                    <TableHead>Situação</TableHead>
+                    <TableHead>Cadastrado em</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {users.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell className="font-medium text-white">{u.name}</TableCell>
+                      <TableCell>{u.email}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{ROLE_LABEL[u.role]}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={u.active ? "border-success/30 bg-success/10 text-success" : "border-white/15 bg-white/5 text-muted-foreground"}
+                        >
+                          {u.active ? "Ativo" : "Inativo"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{formatFullDate(u.createdAt)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </>
+  );
+}
+
+/** Demonstração: equipe fictícia de src/lib/mock, como na Fase 1. */
+function UsersDemo() {
+  return (
+    <>
+      <PageHeader title="Usuários" description={DESCRIPTION} />
       <Card>
         <CardContent>
           <div className="overflow-x-auto rounded-xl border border-white/10">

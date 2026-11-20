@@ -34,14 +34,20 @@ export const ADMIN_NAV = [
   { href: "/admin/projetos", label: "Projetos", icon: FolderKanban },
   { href: "/admin/materiais", label: "Materiais", icon: Images },
   { href: "/admin/historico", label: "Histórico", icon: CheckCheck },
-  { href: "/admin/usuarios", label: "Usuários", icon: Users },
+  // Só o administrador vê o item. A barreira real é `requireAdmin()` na própria página; isto é só conveniência.
+  { href: "/admin/usuarios", label: "Usuários", icon: Users, adminOnly: true },
 ] as const;
 
-function NavList({ onNavigate }: { onNavigate?: () => void }) {
+/** Itens do menu que o papel pode ver (esconder o item NÃO é controle de acesso). */
+export function visibleNav(isAdmin: boolean) {
+  return ADMIN_NAV.filter((item) => !("adminOnly" in item && item.adminOnly) || isAdmin);
+}
+
+function NavList({ onNavigate, isAdmin }: { onNavigate?: () => void; isAdmin: boolean }) {
   const pathname = usePathname();
   return (
     <nav aria-label="Navegação do painel" className="flex flex-col gap-1">
-      {ADMIN_NAV.map(({ href, label, icon: Icon, ...rest }) => {
+      {visibleNav(isAdmin).map(({ href, label, icon: Icon, ...rest }) => {
         const active = "exact" in rest && rest.exact ? pathname === href : pathname.startsWith(href);
         return (
           <Link
@@ -76,7 +82,17 @@ export interface ShellUser {
   roleLabel: string;
 }
 
-export function AdminShell({ user, children, demo = false }: { user: ShellUser; children: ReactNode; demo?: boolean }) {
+export function AdminShell({
+  user,
+  children,
+  demo = false,
+  isAdmin = false,
+}: {
+  user: ShellUser;
+  children: ReactNode;
+  demo?: boolean;
+  isAdmin?: boolean;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -90,7 +106,7 @@ export function AdminShell({ user, children, demo = false }: { user: ShellUser; 
           <Logo size="sm" />
         </Link>
         <Suspense fallback={<NavFallback />}>
-          <NavList />
+          <NavList isAdmin={isAdmin} />
         </Suspense>
         <p className="mt-auto px-2 text-xs text-muted-foreground">
           {demo ? "Fase 1 · dados fictícios" : "Painel da equipe Luvi"}
@@ -156,7 +172,7 @@ export function AdminShell({ user, children, demo = false }: { user: ShellUser; 
             <Logo size="sm" />
           </div>
           <Suspense fallback={<NavFallback />}>
-            <NavList onNavigate={() => setOpen(false)} />
+            <NavList isAdmin={isAdmin} onNavigate={() => setOpen(false)} />
           </Suspense>
         </SheetContent>
       </Sheet>

@@ -1,73 +1,95 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { CheckCircle2, MessageSquareWarning } from "lucide-react";
+import { Suspense } from "react";
+import { CheckCheck } from "lucide-react";
+import { DecisionsTable, type DecisionRow } from "@/components/admin/decisions-table";
+import { EmptyState, LoadErrorState } from "@/components/admin/data-states";
 import { PageHeader } from "@/components/page-header";
-import { MockDataNotice } from "@/components/interim-data-notice";
+import { ListSkeleton } from "@/components/page-skeleton";
 import { Card, CardContent } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { STAFF_HISTORY_LIMIT, listStaffDecisions } from "@/lib/approval/staff-history";
+import { requireStaff } from "@/lib/auth/session";
+import { DataLoadError } from "@/lib/clients/queries";
 import { clientById } from "@/lib/domain";
-import { formatDateTime } from "@/lib/format";
+import { isDemoMode } from "@/lib/env";
 import { clients, decisions, materials } from "@/lib/mock/data";
 
 export const metadata: Metadata = { title: "Histórico de aprovações" };
 
+const DESCRIPTION = "Registro imutável de cada decisão: quem decidiu, quando, em qual versão e por qual canal.";
+
 export default function AdminHistoryPage() {
-  const rows = [...decisions].sort((a, b) => b.at.localeCompare(a.at));
+  return (
+    <Suspense fallback={<ListSkeleton />}>
+      <HistoryContent />
+    </Suspense>
+  );
+}
+
+async function HistoryContent() {
+  await requireStaff();
+
+  // Demonstração: os dados fictícios da Fase 1. Fora dela, nada fictício aparece.
+  if (isDemoMode()) return <HistoryDemo />;
+
+  let result: Awaited<ReturnType<typeof listStaffDecisions>>;
+  try {
+    result = await listStaffDecisions();
+  } catch (error) {
+    if (!(error instanceof DataLoadError)) throw error;
+    return (
+      <>
+        <PageHeader title="Histórico de aprovações" description={DESCRIPTION} />
+        <LoadErrorState what="o histórico de aprovações" />
+      </>
+    );
+  }
+
   return (
     <>
-      <MockDataNotice />
-      <PageHeader
-        title="Histórico de aprovações"
-        description="Registro imutável de cada decisão: quem decidiu, quando, em qual versão e por qual canal."
-      />
+      <PageHeader title="Histórico de aprovações" description={DESCRIPTION} />
+      {result.items.length === 0 ? (
+        <EmptyState icon={CheckCheck} title="Nenhuma decisão registrada ainda">
+          Quando um aprovador aprovar ou pedir alteração de um material, a decisão aparece aqui, com quem decidiu, a versão e o canal.
+        </EmptyState>
+      ) : (
+        <Card>
+          <CardContent>
+            <DecisionsTable rows={result.items} />
+            {result.truncated && (
+              <p className="mt-3 text-xs text-muted-foreground">Mostrando as {STAFF_HISTORY_LIMIT} decisões mais recentes.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </>
+  );
+}
+
+/** Demonstração: decisões fictícias de src/lib/mock, no mesmo formato da tabela real. */
+function HistoryDemo() {
+  const rows: DecisionRow[] = [...decisions]
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .map((d) => {
+      const material = materials.find((m) => m.id === d.materialId);
+      return {
+        id: d.id,
+        materialId: d.materialId,
+        materialTitle: material?.title ?? "—",
+        clientName: material ? (clientById(material.clientId, clients)?.name ?? "—") : "—",
+        versionNumber: d.version,
+        decision: d.decision,
+        via: d.via,
+        by: d.by,
+        at: d.at,
+        note: d.note ?? "",
+      };
+    });
+  return (
+    <>
+      <PageHeader title="Histórico de aprovações" description={DESCRIPTION} />
       <Card>
         <CardContent>
-          <div className="overflow-x-auto rounded-xl border border-white/10">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Material</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Versão</TableHead>
-                  <TableHead>Decisão</TableHead>
-                  <TableHead>Por</TableHead>
-                  <TableHead>Canal</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((d) => {
-                  const material = materials.find((m) => m.id === d.materialId);
-                  return (
-                    <TableRow key={d.id}>
-                      <TableCell className="whitespace-nowrap">{formatDateTime(d.at)}</TableCell>
-                      <TableCell className="max-w-64 font-medium">
-                        <Link href={`/admin/materiais/${d.materialId}`} className="text-white hover:text-primary hover:underline">
-                          {material?.title}
-                        </Link>
-                        {d.note && <p className="mt-0.5 truncate text-xs font-normal text-muted-foreground">“{d.note}”</p>}
-                      </TableCell>
-                      <TableCell>{material ? clientById(material.clientId, clients)?.name : "—"}</TableCell>
-                      <TableCell>v{d.version}</TableCell>
-                      <TableCell>
-                        {d.decision === "aprovado" ? (
-                          <span className="inline-flex items-center gap-1 text-success">
-                            <CheckCircle2 className="size-3.5" aria-hidden /> Aprovado
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-primary">
-                            <MessageSquareWarning className="size-3.5" aria-hidden /> Alteração
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>{d.by}</TableCell>
-                      <TableCell>{d.via === "link" ? "Link seguro" : "Portal"}</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
+          <DecisionsTable rows={rows} />
         </CardContent>
       </Card>
     </>

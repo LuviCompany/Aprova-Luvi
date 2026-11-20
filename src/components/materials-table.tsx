@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { STATUS_LABEL, TYPE_LABEL, filterMaterials, isOverdue, type MaterialFilters } from "@/lib/domain";
 import { formatDate } from "@/lib/format";
-import { NOW } from "@/lib/mock/data";
+import { NOW } from "@/lib/demo-now";
 import type { Client, Material, MaterialStatus, MaterialType } from "@/lib/types";
 
 interface MaterialsTableProps {

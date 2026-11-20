@@ -34,13 +34,19 @@ function trackPageErrors(page: Page) {
   return errors;
 }
 
-test("admin: o aviso de demonstração fica só nas telas que ainda usam dados fictícios", async ({ page }) => {
+test("admin: nenhuma tela do painel mostra aviso de demonstração nem dados fictícios", async ({ page }) => {
   await login(page, "admin@luvi.test");
-  // O dashboard agora lê o banco real: sem aviso. Histórico e usuários ainda usam dados fictícios.
+  // Todas as telas leem o banco real (dashboard, histórico e usuários inclusive): sem aviso.
   await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
   await expect(page.getByRole("note")).toHaveCount(0);
   await page.goto("/admin/historico");
-  await expect(page.getByRole("note")).toContainText("dados de demonstração");
+  await expect(page.getByRole("heading", { name: "Histórico de aprovações", level: 1 })).toBeVisible();
+  await expect(page.getByRole("note")).toHaveCount(0);
+  await expect(page.getByText("Nenhuma decisão registrada ainda")).toBeVisible();
+  await page.goto("/admin/usuarios");
+  await expect(page.getByRole("heading", { name: "Usuários", level: 1 })).toBeVisible();
+  await expect(page.getByRole("note")).toHaveCount(0);
+  await expect(page.getByText(/Casa Aurora Móveis|Brisa Modas|Vita Nutri|Enzo|Camila|Bruno|\.example|Fase 1|dados fictícios/)).toHaveCount(0);
 
   await page.goto("/admin/clientes");
   await expect(page.getByRole("heading", { name: "Clientes", level: 1 })).toBeVisible();
@@ -496,5 +502,108 @@ test.describe("etapa A.2: escolha da empresa no portal", () => {
     await expect(page.getByRole("heading", { name: "Escolha a empresa" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Materiais" }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Trocar empresa" })).toHaveCount(0);
+  });
+});
+
+test.describe("usuários e histórico da equipe (dados reais)", () => {
+  const CLIENT = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+  const PROJECT = "9b2c6f6a-3f1e-4c53-8d57-6a5c0c0f7a11";
+  const MATERIAL = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c01";
+  const VERSION = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d01";
+
+  test("administrador vê só a equipe, com situação e data real de cadastro, sem aprovadores", async ({ page }) => {
+    const errors = trackPageErrors(page);
+    await fetch(`${MOCK}/__reset`);
+    await login(page, "admin@luvi.test");
+    await expect(shown(page.getByRole("link", { name: "Usuários" })).first()).toBeVisible();
+    await page.goto("/admin/usuarios");
+    await expect(page.getByRole("heading", { name: "Usuários", level: 1 })).toBeVisible();
+    for (const name of ["Nome", "E-mail", "Papel", "Situação", "Cadastrado em"]) {
+      await expect(page.getByRole("columnheader", { name })).toBeVisible();
+    }
+    await expect(page.getByRole("columnheader", { name: "Último acesso" })).toHaveCount(0);
+    const rows = page.locator("tbody tr");
+    await expect(rows).toHaveCount(3);
+    await expect(rows.nth(0)).toContainText("Admin Teste");
+    await expect(rows.nth(0)).toContainText("Administrador");
+    await expect(rows.nth(0)).toContainText("Ativo");
+    await expect(rows.nth(0)).toContainText("10/02/2026");
+    await expect(rows.nth(1)).toContainText("Designer Teste");
+    await expect(rows.nth(1)).toContainText("05/03/2026");
+    await expect(rows.nth(2)).toContainText("Atendimento Teste");
+    await expect(page.getByText(/Marina Prado|Paulo Aurora|cliente@luvi\.test/)).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  for (const [email, label] of [
+    ["designer@luvi.test", "designer"],
+    ["atendimento@luvi.test", "atendimento"],
+  ] as const) {
+    test(`${label} não vê o item Usuários e, digitando a URL, volta ao painel sem ver a página`, async ({ page }) => {
+      await login(page, email);
+      await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Usuários" })).toHaveCount(0); // nem no menu lateral nem no do celular
+      await expect(shown(page.getByRole("link", { name: "Clientes" })).first()).toBeVisible();
+
+      await page.goto("/admin/usuarios");
+      await expect(page).toHaveURL(/\/admin$/);
+      await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
+      await expect(page.getByText("Equipe Luvi com acesso ao painel administrativo.")).toHaveCount(0);
+      await expect(page.getByText("Admin Teste")).toHaveCount(0);
+    });
+  }
+
+  test("aprovador de cliente não acessa Usuários nem o histórico da equipe", async ({ page }) => {
+    await page.goto("/login");
+    await page.waitForLoadState("networkidle");
+    await page.getByLabel("E-mail").fill("cliente1@luvi.test");
+    await page.getByLabel("Senha", { exact: true }).fill("qualquer-senha-1");
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await expect(page).toHaveURL(/\/portal/);
+    for (const path of ["/admin/usuarios", "/admin/historico"]) {
+      await page.goto(path);
+      await expect(page).toHaveURL(/\/portal/);
+    }
+  });
+
+  test("histórico: decisões reais com material, cliente, versão, decisão, autor e canal, mais recentes primeiro", async ({ page }) => {
+    const errors = trackPageErrors(page);
+    await fetch(`${MOCK}/__reset`);
+    await fetch(`${MOCK}/__seed`, {
+      method: "POST",
+      body: JSON.stringify({
+        clients: [{ id: CLIENT, name: "Casa Aurora Teste" }],
+        projects: [{ id: PROJECT, client_id: CLIENT, name: "Campanha de verão" }],
+        materials: [{ id: MATERIAL, client_id: CLIENT, project_id: PROJECT, title: "Carrossel de verão", type: "carrossel", status: "aprovado" }],
+        versions: [{ id: VERSION, material_id: MATERIAL, client_id: CLIENT }],
+        decisions: [
+          { material_id: MATERIAL, version_id: VERSION, client_id: CLIENT, decision: "alteracao", note: "Trocar a cor do título.", via: "link", approver_name: "Paulo Aurora", created_at: "2026-11-01T15:00:00Z" },
+          { material_id: MATERIAL, version_id: VERSION, client_id: CLIENT, decision: "aprovado", note: "", via: "portal", approver_name: "Marina Prado", created_at: "2026-11-03T15:00:00Z" },
+        ],
+      }),
+    });
+    await login(page, "atendimento@luvi.test"); // a equipe toda lê o histórico, não só o administrador
+    await page.goto("/admin/historico");
+    await expect(page.getByRole("heading", { name: "Histórico de aprovações", level: 1 })).toBeVisible();
+    await expect(page.getByRole("note")).toHaveCount(0);
+    await expect(page.getByText("Nenhuma decisão registrada ainda")).toHaveCount(0);
+    for (const name of ["Data", "Material", "Cliente", "Versão", "Decisão", "Por", "Canal"]) {
+      await expect(page.getByRole("columnheader", { name })).toBeVisible();
+    }
+    const rows = page.locator("tbody tr");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("Carrossel de verão");
+    await expect(rows.nth(0)).toContainText("Casa Aurora Teste");
+    await expect(rows.nth(0)).toContainText("v1");
+    await expect(rows.nth(0)).toContainText("Aprovado");
+    await expect(rows.nth(0)).toContainText("Marina Prado");
+    await expect(rows.nth(0)).toContainText("Portal");
+    await expect(rows.nth(1)).toContainText("Alteração");
+    await expect(rows.nth(1)).toContainText("Paulo Aurora");
+    await expect(rows.nth(1)).toContainText("Link seguro");
+    await expect(rows.nth(1)).toContainText("Trocar a cor do título.");
+    await expect(rows.nth(0).getByRole("link", { name: "Carrossel de verão" })).toHaveAttribute("href", `/admin/materiais/${MATERIAL}`);
+    await expect(page.getByText(/Casa Aurora Móveis|Brisa Modas|Vita Nutri/)).toHaveCount(0);
+    expect(errors).toEqual([]);
   });
 });

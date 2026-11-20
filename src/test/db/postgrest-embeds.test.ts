@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DASHBOARD_DECISIONS_SELECT, DASHBOARD_MATERIALS_SELECT, DASHBOARD_PENDING_SELECT } from "@/lib/dashboard/queries";
 import { PORTAL_DETAIL_SELECT, PORTAL_HISTORY_SELECT, PORTAL_LIST_SELECT } from "@/lib/approval/portal-queries";
 import { REQUEST_SELECT } from "@/lib/approval/staff-queries";
+import { STAFF_HISTORY_SELECT } from "@/lib/approval/staff-history";
+import { TEAM_USERS_SELECT } from "@/lib/users/queries";
 import { MATERIAL_DETAIL_SELECT, MATERIAL_LIST_SELECT } from "@/lib/materials/selects";
 import { VERSIONS_SELECT } from "@/lib/materials/versions";
 import { createTestDb, type TestDb } from "./harness";
@@ -65,6 +67,8 @@ afterAll(async () => {
 });
 
 const QUERIES: Array<[string, string, string]> = [
+  ["equipe: histórico de decisões", "decisions", STAFF_HISTORY_SELECT],
+  ["equipe: usuários", "profiles", TEAM_USERS_SELECT],
   ["portal: lista de materiais", "materials", PORTAL_LIST_SELECT],
   ["portal: detalhe do material", "materials", PORTAL_DETAIL_SELECT],
   ["portal: histórico de decisões", "decisions", PORTAL_HISTORY_SELECT],

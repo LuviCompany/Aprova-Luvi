@@ -26,7 +26,7 @@ vi.mock("next/navigation", () => ({
 // O `cache` do React memoiza por requisição; nos testes cada chamada precisa ser nova.
 vi.mock("react", async (importOriginal) => ({ ...(await importOriginal<typeof import("react")>()), cache: <T,>(fn: T) => fn }));
 
-import { getSessionState, requireAnyUser } from "@/lib/auth/session";
+import { getSessionState, requireAdmin, requireAnyUser, requireStaff } from "@/lib/auth/session";
 
 const USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
 const profile = {
@@ -90,5 +90,58 @@ describe("requireAnyUser", () => {
   it("indisponível falha fechado com erro, sem fingir logout", async () => {
     getUser.mockResolvedValue({ data: { user: null }, error: networkError });
     await expect(requireAnyUser()).rejects.toThrow(/indisponível/);
+  });
+});
+
+describe("requireAdmin: a tela Usuários é só do administrador (decidido no servidor, por requisição)", () => {
+  const as = (role: string) => maybeSingle.mockResolvedValue({ data: { ...profile, role }, error: null });
+  const redirectOf = async (fn: () => Promise<unknown>) => {
+    try {
+      await fn();
+    } catch (error) {
+      if (error instanceof RedirectError) return error.to;
+      throw error;
+    }
+    return null;
+  };
+
+  it("administrador entra", async () => {
+    as("admin");
+    await expect(requireAdmin()).resolves.toMatchObject({ role: "admin", id: USER_ID });
+  });
+
+  it("designer é enviado ao painel, sem acessar a página", async () => {
+    as("designer");
+    expect(await redirectOf(requireAdmin)).toBe("/admin");
+  });
+
+  it("atendimento é enviado ao painel, sem acessar a página", async () => {
+    as("atendimento");
+    expect(await redirectOf(requireAdmin)).toBe("/admin");
+  });
+
+  it("aprovador de cliente vai ao portal (nem chega a ser equipe)", async () => {
+    as("cliente");
+    expect(await redirectOf(requireAdmin)).toBe("/portal");
+  });
+
+  it("sem sessão vai ao login; perfil inativo é recusado; falha do serviço não libera nada", async () => {
+    getUser.mockResolvedValue({ data: { user: null }, error: { name: "AuthSessionMissingError", status: 400 } });
+    expect(await redirectOf(requireAdmin)).toBe("/login");
+    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
+    maybeSingle.mockResolvedValue({ data: { ...profile, active: false }, error: null });
+    expect(await redirectOf(requireAdmin)).toBe("/login?erro=sem-acesso");
+    maybeSingle.mockResolvedValue({ data: null, error: { message: "fetch failed", code: "" } });
+    await expect(requireAdmin()).rejects.toThrow(/indisponível/);
+  });
+
+  it("os três papéis de equipe passam em requireStaff, mas só o administrador passa em requireAdmin", async () => {
+    const outcome: Record<string, string> = {};
+    for (const role of ["admin", "designer", "atendimento"]) {
+      as(role);
+      await expect(requireStaff()).resolves.toMatchObject({ role });
+      outcome[role] = (await redirectOf(requireAdmin)) ?? "liberado";
+    }
+    expect(outcome).toEqual({ admin: "liberado", designer: "/admin", atendimento: "/admin" });
   });
 });

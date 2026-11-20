@@ -34,6 +34,13 @@ const USERS = {
   "cliente1@luvi.test": { id: "55555555-5555-4555-8555-555555555555", role: "cliente", name: "Paulo Aurora" },
 };
 const byId = (id) => Object.entries(USERS).find(([, u]) => u.id === id);
+const USER_CREATED = {
+  "admin@luvi.test": "2026-02-10T12:00:00Z",
+  "designer@luvi.test": "2026-03-05T12:00:00Z",
+  "atendimento@luvi.test": "2026-04-20T12:00:00Z",
+  "cliente@luvi.test": "2026-05-01T12:00:00Z",
+  "cliente1@luvi.test": "2026-05-02T12:00:00Z",
+};
 
 const fresh = () => ({ clients: [], projects: [], approvers: [], invites: [], materials: [], versions: [], files: [], contents: [], requests: [], decisions: [], links: [], verifications: [], sessions: [], comments: [], objects: {}, tokens: {} });
 let tick = 0;
@@ -451,8 +458,17 @@ async function handle(req, res) {
   if (await handleApproval({ ...approvalCtx, table })) return;
 
   if (table === "profiles" && req.method === "GET") {
-    const row = { id: who.id, full_name: who.name, email: who.email, role: who.role, organization_id: ORG, active: true };
-    return send(res, 200, matches(row, params) ? [row] : []);
+    if (url.searchParams.has("id")) {
+      const row = { id: who.id, full_name: who.name, email: who.email, role: who.role, organization_id: ORG, active: true };
+      return send(res, 200, matches(row, params) ? [row] : []);
+    }
+    // listagem (tela Usuários): a RLS só mostra a organização à equipe; aprovador de cliente não lista ninguém
+    if (!isStaff) return send(res, 200, []);
+    const rows = Object.entries(USERS)
+      .map(([email, u]) => ({ id: u.id, full_name: u.name, email, role: u.role, organization_id: ORG, active: true, created_at: USER_CREATED[email] }))
+      .filter((row) => matches(row, params))
+      .sort((a, b) => a.full_name.localeCompare(b.full_name));
+    return send(res, 200, rows);
   }
 
   if (table === "clients") {

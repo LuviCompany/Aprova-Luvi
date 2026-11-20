@@ -22,6 +22,7 @@ async function AdminGate({ children }: { children: ReactNode }) {
   return (
     <AdminShell
       demo={isDemoMode()}
+      isAdmin={user.role === "admin"}
       user={{ name: user.name, email: user.email, initials: user.initials, roleLabel: ROLE_LABEL[user.role] }}
     >
       {children}

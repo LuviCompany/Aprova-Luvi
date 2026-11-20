@@ -10,7 +10,7 @@ import { DecisionPanel } from "@/components/decision-panel";
 import { MaterialViewer } from "@/components/material-viewer";
 import { StatusBadge, TypeBadge } from "@/components/status-badge";
 import { VersionHistory } from "@/components/version-history";
-import { NOW } from "@/lib/mock/data";
+import { NOW } from "@/lib/demo-now";
 import { formatDate } from "@/lib/format";
 import type { Client, Comment, Decision, Material, MaterialStatus, Project } from "@/lib/types";
 
