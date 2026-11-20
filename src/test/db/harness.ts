@@ -58,6 +58,13 @@ const LEGACY_DEFAULT_PRIVILEGES = `
   alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
 `;
 
+// Padrão dos projetos NOVOS, medido no projeto de produção em 2026-11-20: tabelas novas nascem SEM SELECT/INSERT/UPDATE/DELETE para
+// os papéis da API, mas o service_role ficou com TRUNCATE, REFERENCES e TRIGGER (17 tabelas x 3 = 51 privilégios além do necessário).
+const NEW_DEFAULT_PRIVILEGES = `
+  alter default privileges grant truncate, references, trigger on tables to service_role;
+  alter default privileges in schema public grant truncate, references, trigger on tables to service_role;
+`;
+
 export type SupabaseDefaults = "legacy" | "2026";
 
 export type TestDb = PGlite & {
@@ -83,7 +90,7 @@ export async function createTestDb(
 ): Promise<TestDb> {
   const db = new PGlite() as TestDb;
   await db.exec(SUPABASE_STUB);
-  if ((options.supabaseDefaults ?? "legacy") === "legacy") await db.exec(LEGACY_DEFAULT_PRIVILEGES);
+  await db.exec((options.supabaseDefaults ?? "legacy") === "legacy" ? LEGACY_DEFAULT_PRIVILEGES : NEW_DEFAULT_PRIVILEGES);
 
   const files = options.migrate === false
     ? []

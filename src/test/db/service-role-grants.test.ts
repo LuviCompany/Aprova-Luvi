@@ -49,8 +49,19 @@ describe("antes da migration 16 (projeto novo do Supabase, como a produção)", 
     });
   });
 
-  it("o SQL de verificação acusa exatamente os 12 + 12 privilégios que faltam e mais nada", () => {
-    expect(violations(envs["2026"].before)).toEqual({ 1: 12, 2: 12, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 });
+  it("o SQL de verificação acusa o que a produção mostrou: 12 + 12 privilégios que faltam e 51 a mais (17 tabelas x TRUNCATE/REFERENCES/TRIGGER)", async () => {
+    expect(violations(envs["2026"].before)).toEqual({ 1: 12, 2: 12, 3: 51, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 });
+    const extra = await envs["2026"].db.query<{ priv: string; n: string }>(
+      `select p.priv, count(*)::text as n from pg_class c join pg_namespace s on s.oid = c.relnamespace
+         cross join (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')) p(priv)
+        where s.nspname = 'public' and c.relkind in ('r', 'p') and has_table_privilege('service_role', c.oid, p.priv)
+        group by p.priv order by 1`,
+    );
+    expect(extra.rows).toEqual([
+      { priv: "REFERENCES", n: "17" },
+      { priv: "TRIGGER", n: "17" },
+      { priv: "TRUNCATE", n: "17" },
+    ]);
   });
 
   it("no projeto antigo (desenvolvimento) não falta nada, mas há EXCESSO (ALL por padrão)", () => {

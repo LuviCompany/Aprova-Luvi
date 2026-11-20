@@ -5,11 +5,12 @@
 --   tipo = violacao  -> contagem; DEPOIS da migration, todas precisam ser 0.
 --   tipo = impressao -> resumo (md5) do estado; precisa ser IDÊNTICO antes e depois (prova que nada indevido mudou).
 --
--- ANTES da migration, num projeto criado depois de 30/05/2026 (produção):
---   bloco 1 = 12 e bloco 2 = 12 (privilégios que faltam ao service_role); blocos 3 a 9 = 0.
+-- ANTES da migration, num projeto criado depois de 30/05/2026 (produção, medido em 2026-11-20):
+--   bloco 1 = 12 e bloco 2 = 12 (privilégios que faltam ao service_role); bloco 3 = 51 (o service_role tem TRUNCATE,
+--   REFERENCES e TRIGGER nas 17 tabelas: 17 x 3); blocos 4 a 9 = 0.
 -- ANTES, num projeto antigo (desenvolvimento, com privilégios automáticos): os blocos 1 e 2 dão 0 e o bloco 3
 --   mostra o EXCESSO (o service_role tem ALL); a migration 16 também o reduz ao mínimo.
--- DEPOIS, em qualquer projeto: blocos 1 a 9 = 0; as impressões dos blocos 10 a 14 iguais às de antes.
+-- DEPOIS, em qualquer projeto (a migration revoga os 51 e concede o mínimo): blocos 1 a 9 = 0; as impressões dos blocos 10 a 14 iguais às de antes.
 -- Se algo divergir, pare e traga o resultado: não rode a migration de novo nem conceda privilégios à mão.
 
 with expected_table(tbl, priv) as (values
