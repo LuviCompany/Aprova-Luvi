@@ -74,3 +74,42 @@ describe("componentes de cliente não puxam os dados fictícios", () => {
     expect(read("src/lib/demo-now.ts")).not.toMatch(/^import /m);
   });
 });
+
+describe("cadastro de membros da equipe (Usuários)", () => {
+  const actions = read("src/app/admin/usuarios/actions.ts");
+
+  it("só a versão real da página oferece o cadastro; a demonstração não grava nada", () => {
+    const real = between(users, "async function UsersContent", "function UsersDemo");
+    expect(real).toContain("<TeamInviteDialog />");
+    expect(real).toContain("ResendTeamInviteButton");
+    expect(users.slice(users.indexOf("function UsersDemo"))).not.toMatch(/TeamInviteDialog|ResendTeamInviteButton/);
+  });
+
+  it("a consulta de convites pendentes só roda depois de exigir administrador", () => {
+    expect(index(users, "await requireAdmin()")).toBeLessThan(index(users, "listPendingTeamInvites("));
+  });
+
+  it("as ações exigem administrador (authorizeAdmin) ANTES de ler o formulário e não importam o cliente de chave secreta", () => {
+    expect(actions).toContain("authorizeAdmin");
+    expect(actions).not.toMatch(/authorizeStaff/);
+    expect(actions).not.toMatch(/supabase\/admin|createSupabaseAdminClient|SUPABASE_SECRET_KEY/);
+    const invite = actions.slice(index(actions, "export async function inviteTeamMemberAction"));
+    expect(index(invite, "await authorizeAdmin()")).toBeLessThan(index(invite, "text(formData"));
+    const resend = actions.slice(index(actions, "export async function resendTeamInviteAction"));
+    expect(index(resend, "await authorizeAdmin()")).toBeLessThan(index(resend, "isUuid(userId)"));
+  });
+
+  it("a organização e o papel de quem convida nunca vêm do formulário: só nome, e-mail, confirmação e papel do convidado", () => {
+    const code = actions.replace(/\/\*[\s\S]*?\*\//g, ""); // sem os comentários
+    expect(code).not.toMatch(/organization/i);
+    for (const field of ["name", "email", "emailConfirm", "role"]) expect(code).toContain(`text(formData, "${field}")`);
+  });
+
+  it("o serviço usa o cliente DO USUÁRIO para gravar o perfil (função do banco) e a chave secreta só para o Auth", () => {
+    const service = read("src/lib/invites/team.ts").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(service).toContain('supabase.rpc("add_team_member"');
+    expect(service).toContain('supabase.rpc("reserve_team_invite_resend"');
+    expect(service).not.toMatch(/\.insert\(|\.update\(|\.upsert\(/); // nenhuma gravação direta em tabelas com a chave secreta
+    expect(service).not.toMatch(/app_metadata|user_metadata/); // o papel nunca vai em metadados do usuário
+  });
+});

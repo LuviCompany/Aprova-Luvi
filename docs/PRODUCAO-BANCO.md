@@ -24,10 +24,12 @@ Fonte: `supabase/sql-manifest.sha256` (testado em `src/test/sql-manifest.test.ts
 | 13 | `20261106120000_approval_per_approver` (D1) | `a58f7d39842044efbcb227c28a226a9c4e75d13fffb8a0ebc10c85a950fc4ae0` | 13987 |
 | 14 | `20261106120100_approval_link_flow` (D2) | `a099ab3938b46961f9f8bc61094915693574338845bf1b04ab2ac28261bbd51b` | 14400 |
 | 15 | `20261107120000_approvers_portal_own_rows` (D3) | `745455e87824aa0e6e63107de8de651a90c14e4d544a84a4b75ee7aa8e80b4cb` | 1104 |
-| 16 | `20261120120000_service_role_grants` (**pendente em produção**) | `2baf78aa0ad3fab1a6d379b63b1bfa9e137bc2a193b67e023b77944d98d27704` | 3424 |
+| 16 | `20261120120000_service_role_grants` (aplicada em produção em 2026-11-20) | `2baf78aa0ad3fab1a6d379b63b1bfa9e137bc2a193b67e023b77944d98d27704` | 3424 |
+| 17 | `20261121120000_team_members` (**pendente em produção**) | `29a68af00fa6c55f9162e5822758cfd0bec4144a68033df22545346ecefccd97` | 7446 |
 | — | `supabase/preflight.sql` (v2, aceita o RLS automático do Supabase) | `411bce6a6527ad9bda2b0a613f05e6fd42cfa294fad2ca5dcda5c22a95382552` | — |
-| — | `supabase/verify-summary.sql` (31 blocos em 1 tabela, gerado do `verify.sql`) | `6f9429eedfdf74a8e95cb6e9cf1c4e5c02da478d63c4e5f7ae9a639bb6e11a8a` | — |
+| — | `supabase/verify-summary.sql` (31 blocos em 1 tabela, gerado do `verify.sql`) | `e89b090f355806b5a07a125b25c5ef127a8b8ac9348fbccc7f369017c7e11d7f` | — |
 | — | `supabase/verify-service-role.sql` (privilégios do service_role, antes/depois da migration 16) | `34cd7216ac08d07c5ff17d05fce0e41972c53bfcc503814cc10dd896a124a779` | — |
+| — | `supabase/verify-team-members.sql` (funções e privilégios da migration 17, antes/depois) | `5f22062d73cff857791faf8922ae3e276657e196e6e5080ed5b6dfc1977f3c63` | — |
 
 As migrations 05–15 coincidem com os hashes registrados em `MIGRACOES-A2/C/D.md` (aplicadas no dev). As migrations 01–04 não tinham hash nos docs; o manifesto passa a ser o registro.
 
@@ -108,3 +110,22 @@ Cole no SQL Editor e clique em Run. Esperado: `tamanho do corpo` com CR > 0, `md
 3. Rode `verify-service-role` de novo. **Esperado DEPOIS:** blocos 1 a 9 = 0 (a migration também revoga os 51) e as impressões 10 a 14 **idênticas** às de antes.
 4. Rode `supabase/verify-summary.sql` (31/31 em 0) e `node scripts/bootstrap-admin.mjs … --check-connection` (agora deve dizer "Conexão OK. Perfis existentes: 0").
 No desenvolvimento a migration também reduz o ALL padrão ao mínimo (bloco 3 mostra o excesso antes); só aplique lá se decidir alinhar os ambientes.
+
+## 6. Migration 17: membros da equipe convidados pelo painel (NÃO aplicada)
+
+**O que faz.** Permite que um **administrador ativo** convide Administrador, Designer ou Atendimento pela tela Usuários, com as regras no banco e auditoria de quem convidou. Cria três funções e nenhuma tabela; não altera RLS, políticas nem privilégios de tabela:
+- `public.add_team_member(p_user_id, p_full_name, p_email, p_role)`: só administrador ativo (42501 para os demais); organização **sempre** a do administrador; papel só `admin`, `designer` ou `atendimento` (22023); o id e o e-mail precisam ser do **mesmo** usuário do Auth, ainda sem e-mail confirmado e sem login (22023); duplicado vira 23505; grava `team_member.invited` na auditoria com o administrador como autor e só `role` e `actor_role` no metadata (sem nome, e-mail, token, senha ou link).
+- `public.reserve_team_invite_resend(p_user_id)`: reserva o reenvio (administrador ativo, membro da equipe da mesma organização, nunca aprovador), no máximo 1 por minuto por pessoa (conta a auditoria imutável), e grava `team_member.invite_resent`.
+- `app.write_org_audit(...)`: escrita interna de auditoria no nível da organização; sem EXECUTE para ninguém da API.
+`EXECUTE` das duas funções públicas: só `authenticated`; `anon`, `public` e `service_role` não. O papel de um membro **não muda** nesta etapa (nenhuma função nem privilégio altera `profiles.role`).
+
+**Ordem de implantação (seguro e reversível até o primeiro convite).**
+1. Rode `supabase/verify-team-members.sql` ANTES (`npm run sql:copy -- verify-team-members`). Esperado: bloco 1 = 3, blocos 2 a 8 = 0. Guarde as impressões 9 a 12.
+2. Aplique a migration (`npm run sql:copy -- 17`, que confere o SHA-256 acima). Se der erro, não repita: traga a mensagem.
+3. Rode a verificação DEPOIS: blocos 1 a 8 = 0 e as impressões 9 a 12 **idênticas**. Rode `verify-summary.sql` (31/31 em 0; o `verify.sql` agora lista as duas funções novas como permitidas ao `authenticated`).
+4. Só então publique o código da tela (ensaio, depois promoção). O código novo **falha fechado** se a migration ainda não existir (o convite mostra erro e nada é criado, porque o usuário do Auth criado é apagado).
+5. Convites reais só com a sua decisão, um por vez: o e-mail vai para a pessoa e o link vale 24 horas, de uso único.
+
+**Reversão.** Antes de qualquer convite: `drop function public.add_team_member(uuid, text, text, public.app_role); drop function public.reserve_team_invite_resend(uuid); drop function app.write_org_audit(uuid, uuid, text, text, uuid, jsonb);` (só no SQL Editor, com a sua decisão). Depois de convites, os perfis e a auditoria ficam; não apague.
+
+**Limites conhecidos.** Não há desativar/remover usuário nem trocar papel pelo painel (próxima etapa). Quem recebe o link dentro de 24 horas vira o papel do convite: confira o e-mail (a janela exige digitá-lo duas vezes). Ative a verificação em duas etapas dos administradores no Supabase/Vercel/GitHub quando possível.

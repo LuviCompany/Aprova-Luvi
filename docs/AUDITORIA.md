@@ -23,6 +23,8 @@ Etapa B (migration B2, **ainda não aplicada**): `material.created`, `material.u
 
 Já existiam: `version.created`, `file.added`, `approval_request.created`, `approval_link.created`, `approval_link.revoked`, `approval_request.cancelled`, `decision.recorded`.
 
+Migration 17 (membros da equipe, ainda não aplicada): `team_member.invited` e `team_member.invite_resent` (entidade `profile`, `actor_profile_id` = o administrador que convidou, metadata só `role` e `actor_role`; sem nome, e-mail, token, senha ou link).
+
 ## 2. O que NUNCA é gravado
 
 Nome, e-mail, cargo, segmento, descrição, título, texto livre, valores antigos e novos de campos de texto. A auditoria é **imutável** (gatilhos impedem `UPDATE`, `DELETE` e `TRUNCATE`), então qualquer dado pessoal gravado ali não poderia ser apagado depois. Por isso o evento aponta para o registro por `id` e lista só **quais colunas** mudaram. Para saber o valor, consulta-se o próprio registro (que pode ser corrigido ou anonimizado); para saber **quem, quando e o quê**, basta o evento.

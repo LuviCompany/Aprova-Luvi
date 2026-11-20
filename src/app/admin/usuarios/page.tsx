@@ -4,6 +4,8 @@ import { Users } from "lucide-react";
 import { EmptyState, LoadErrorState } from "@/components/admin/data-states";
 import { PageHeader } from "@/components/page-header";
 import { ListSkeleton } from "@/components/page-skeleton";
+import { ResendTeamInviteButton } from "@/components/users/resend-team-invite-button";
+import { TeamInviteDialog } from "@/components/users/team-invite-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -12,6 +14,7 @@ import { requireAdmin } from "@/lib/auth/session";
 import { DataLoadError } from "@/lib/clients/queries";
 import { isDemoMode } from "@/lib/env";
 import { formatDateTime, formatFullDate } from "@/lib/format";
+import { listPendingTeamInvites } from "@/lib/invites/team";
 import { teamUsers } from "@/lib/mock/data";
 import { listTeamUsers } from "@/lib/users/queries";
 
@@ -42,15 +45,17 @@ async function UsersContent() {
     if (!(error instanceof DataLoadError)) throw error;
     return (
       <>
-        <PageHeader title="Usuários" description={DESCRIPTION} />
+        <PageHeader title="Usuários" description={DESCRIPTION} actions={<TeamInviteDialog />} />
         <LoadErrorState what="os usuários" />
       </>
     );
   }
+  // Quem ainda não criou a senha (convite pendente). Só leitura no Auth; se falhar, ninguém aparece como pendente.
+  const pending = await listPendingTeamInvites(users.map((u) => u.id));
 
   return (
     <>
-      <PageHeader title="Usuários" description={DESCRIPTION} />
+      <PageHeader title="Usuários" description={DESCRIPTION} actions={<TeamInviteDialog />} />
       {users.length === 0 ? (
         <EmptyState icon={Users} title="Nenhum usuário da equipe encontrado" />
       ) : (
@@ -65,27 +70,42 @@ async function UsersContent() {
                     <TableHead>Papel</TableHead>
                     <TableHead>Situação</TableHead>
                     <TableHead>Cadastrado em</TableHead>
+                    <TableHead>
+                      <span className="sr-only">Ações</span>
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.map((u) => (
-                    <TableRow key={u.id}>
-                      <TableCell className="font-medium text-white">{u.name}</TableCell>
-                      <TableCell>{u.email}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{ROLE_LABEL[u.role]}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={u.active ? "border-success/30 bg-success/10 text-success" : "border-white/15 bg-white/5 text-muted-foreground"}
-                        >
-                          {u.active ? "Ativo" : "Inativo"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">{formatFullDate(u.createdAt)}</TableCell>
-                    </TableRow>
-                  ))}
+                  {users.map((u) => {
+                    const isPending = pending.has(u.id);
+                    return (
+                      <TableRow key={u.id}>
+                        <TableCell className="font-medium text-white">{u.name}</TableCell>
+                        <TableCell>{u.email}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{ROLE_LABEL[u.role]}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {isPending ? (
+                            <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">
+                              Convite pendente
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className={u.active ? "border-success/30 bg-success/10 text-success" : "border-white/15 bg-white/5 text-muted-foreground"}
+                            >
+                              {u.active ? "Ativo" : "Inativo"}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">{formatFullDate(u.createdAt)}</TableCell>
+                        <TableCell className="text-right">
+                          {isPending && <ResendTeamInviteButton userId={u.id} name={u.name} email={u.email} />}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -96,7 +116,7 @@ async function UsersContent() {
   );
 }
 
-/** Demonstração: equipe fictícia de src/lib/mock, como na Fase 1. */
+/** Demonstração: equipe fictícia de src/lib/mock, como na Fase 1. Sem cadastro: nada é gravado na demonstração. */
 function UsersDemo() {
   return (
     <>

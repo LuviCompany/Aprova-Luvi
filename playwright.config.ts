@@ -91,6 +91,13 @@ export default defineConfig({
       dependencies: ["dashboard-real"],
       use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${APPROVAL_PORT}` },
     },
+    {
+      // Mesmo servidor falso e mesmo app (:3103): cadastro de membros da equipe. Roda DEPOIS da aprovação (estado compartilhado).
+      name: "equipe-real",
+      testMatch: /equipe.spec.ts/,
+      dependencies: ["aprovacao-real"],
+      use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${APPROVAL_PORT}` },
+    },
   ],
   webServer: [
     {

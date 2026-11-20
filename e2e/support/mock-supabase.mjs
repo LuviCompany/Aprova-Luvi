@@ -42,7 +42,7 @@ const USER_CREATED = {
   "cliente1@luvi.test": "2026-05-02T12:00:00Z",
 };
 
-const fresh = () => ({ clients: [], projects: [], approvers: [], invites: [], materials: [], versions: [], files: [], contents: [], requests: [], decisions: [], links: [], verifications: [], sessions: [], comments: [], objects: {}, tokens: {} });
+const fresh = () => ({ clients: [], projects: [], approvers: [], invites: [], materials: [], versions: [], files: [], contents: [], requests: [], decisions: [], links: [], verifications: [], sessions: [], comments: [], objects: {}, tokens: {}, team: [], authUsers: {}, teamEvents: [] });
 let tick = 0;
 const stamp = () => new Date(Date.UTC(2026, 10, 3, 12, 0, tick++)).toISOString();
 let state = fresh();
@@ -373,6 +373,46 @@ async function handle(req, res) {
     const who = actor(req);
     return who ? send(res, 200, authUser(who.email)) : send(res, 401, { code: 401, msg: "invalid JWT" });
   }
+  if (path === "/__team_age" && req.method === "POST") {
+    // gancho de teste: recua em 2 minutos os convites já registrados (para exercitar o reenvio depois do intervalo)
+    for (const e of state.teamEvents) e.at -= 120_000;
+    return send(res, 200, { ok: true });
+  }
+  if (path.startsWith("/auth/v1/admin/")) {
+    if (!/^Bearer sb_secret_/.test(req.headers.authorization ?? "")) return send(res, 401, { code: 401, msg: "chave secreta obrigatória" });
+    if (path === "/auth/v1/admin/generate_link" && req.method === "POST") {
+      const body = await readBody(req);
+      const email = String(body.email ?? "").toLowerCase();
+      if (!email) return send(res, 422, { code: 422, error_code: "validation_failed", msg: "email obrigatório" });
+      const confirmed = Object.keys(USERS).includes(email);
+      if (confirmed && body.type === "invite") return send(res, 422, { code: 422, error_code: "email_exists", msg: "A user with this email address has already been registered" });
+      let account = Object.values(state.authUsers).find((u) => u.email === email);
+      if (!account && !confirmed && body.type === "invite") {
+        account = { id: randomUUID(), email, created_at: stamp(), email_confirmed_at: null, last_sign_in_at: null, aud: "authenticated", role: "" };
+        state.authUsers[account.id] = account;
+      }
+      if (!account) return send(res, 404, { code: 404, error_code: "user_not_found", msg: "User not found" });
+      const hashed = "hash-" + account.id.slice(0, 8);
+      return send(res, 200, {
+        action_link: "http://127.0.0.1:59998/verify?token=" + hashed, email_otp: "123456", hashed_token: hashed,
+        redirect_to: body.redirect_to ?? "", verification_type: body.type, ...account,
+      });
+    }
+    const adminUser = /^\/auth\/v1\/admin\/users\/([0-9a-f-]{36})$/.exec(path);
+    if (adminUser && req.method === "GET") {
+      const known = state.authUsers[adminUser[1]];
+      if (known) return send(res, 200, known);
+      const fixed = byId(adminUser[1]);
+      if (fixed) return send(res, 200, { id: fixed[1].id, email: fixed[0], email_confirmed_at: "2026-01-01T00:00:00Z", last_sign_in_at: "2026-11-01T00:00:00Z", aud: "authenticated", role: "authenticated", created_at: "2026-01-01T00:00:00Z" });
+      return send(res, 404, { code: 404, error_code: "user_not_found", msg: "User not found" });
+    }
+    if (adminUser && req.method === "DELETE") {
+      delete state.authUsers[adminUser[1]];
+      state.team = state.team.filter((m) => m.id !== adminUser[1]);
+      return send(res, 200, {});
+    }
+    return send(res, 404, { msg: "rota administrativa não implementada no mock" });
+  }
   if (path === "/auth/v1/logout") return send(res, 204);
   if (path.startsWith("/auth/v1/")) return send(res, 404, { msg: "não implementado no mock" });
 
@@ -394,6 +434,30 @@ async function handle(req, res) {
     const fn = path.replace("/rest/v1/rpc/", "");
     const body = await readBody(req);
 
+    if (fn === "add_team_member") {
+      if (service || who.role !== "admin") return send(res, 400, raise("sem permissão para adicionar membros da equipe", "42501"));
+      const email = String(body.p_email ?? "").trim().toLowerCase();
+      const name = String(body.p_full_name ?? "").trim();
+      if (!["admin", "designer", "atendimento"].includes(body.p_role)) return send(res, 400, raise("papel inválido para a equipe", "22023"));
+      if (name.length < 2 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 400, raise("dados inválidos", "22023"));
+      const account = state.authUsers[body.p_user_id];
+      if (!account || account.email !== email || account.email_confirmed_at || account.last_sign_in_at) return send(res, 400, raise("o usuário do Auth não confere com o convite", "22023"));
+      if (state.team.some((m) => m.email === email || m.id === account.id) || Object.keys(USERS).includes(email)) {
+        return send(res, 409, { code: "23505", message: "duplicate key value violates unique constraint" });
+      }
+      state.team.push({ id: account.id, full_name: name, email, role: body.p_role, organization_id: ORG, active: true, created_at: stamp() });
+      state.teamEvents.push({ id: account.id, action: "team_member.invited", at: Date.now() });
+      return send(res, 200, account.id);
+    }
+    if (fn === "reserve_team_invite_resend") {
+      if (service || who.role !== "admin") return send(res, 400, raise("sem permissão para reenviar convites da equipe", "42501"));
+      const member = state.team.find((m) => m.id === body.p_user_id);
+      if (!member) return send(res, 404, raise("membro da equipe não encontrado", "P0002"));
+      const last = Math.max(0, ...state.teamEvents.filter((e) => e.id === member.id).map((e) => e.at));
+      if (last > Date.now() - 60_000) return send(res, 400, raise("aguarde um minuto antes de reenviar o convite"));
+      state.teamEvents.push({ id: member.id, action: "team_member.invite_resent", at: Date.now() });
+      return send(res, 200, [{ r_full_name: member.full_name, r_email: member.email, r_role: member.role }]);
+    }
     if (fn === "link_approver_to_client") {
       const source = state.approvers.find((a) => a.id === body.p_source_approver_id);
       const dest = clientOf(body.p_client_id);
@@ -458,16 +522,13 @@ async function handle(req, res) {
   if (await handleApproval({ ...approvalCtx, table })) return;
 
   if (table === "profiles" && req.method === "GET") {
-    if (url.searchParams.has("id")) {
-      const row = { id: who.id, full_name: who.name, email: who.email, role: who.role, organization_id: ORG, active: true };
-      return send(res, 200, matches(row, params) ? [row] : []);
-    }
-    // listagem (tela Usuários): a RLS só mostra a organização à equipe; aprovador de cliente não lista ninguém
-    if (!isStaff) return send(res, 200, []);
-    const rows = Object.entries(USERS)
-      .map(([email, u]) => ({ id: u.id, full_name: u.name, email, role: u.role, organization_id: ORG, active: true, created_at: USER_CREATED[email] }))
-      .filter((row) => matches(row, params))
-      .sort((a, b) => a.full_name.localeCompare(b.full_name));
+    const everyone = [
+      ...Object.entries(USERS).map(([email, u]) => ({ id: u.id, full_name: u.name, email, role: u.role, organization_id: ORG, active: true, created_at: USER_CREATED[email] })),
+      ...state.team,
+    ];
+    // chave secreta (service_role) lê tudo, como a RLS ignorada; o app lê o próprio perfil; a equipe lê a organização; cliente só o próprio
+    const visible = service ? everyone : isStaff ? everyone : everyone.filter((row) => row.id === who.id);
+    const rows = visible.filter((row) => matches(row, params)).sort((a, b) => a.full_name.localeCompare(b.full_name));
     return send(res, 200, rows);
   }
 

@@ -121,6 +121,8 @@ describe("funções", () => {
     "public.link_approver_to_client",
     "public.prepare_approver_invite",
     "public.revoke_approver_invite",
+    "public.add_team_member",
+    "public.reserve_team_invite_resend",
     "public.reorder_version_files",
     "public.start_material_revision",
     "public.submit_for_approval",

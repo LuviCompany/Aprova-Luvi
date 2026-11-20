@@ -36,6 +36,28 @@ export function inviteEmail(input: { name: string; clientName: string; url: stri
   };
 }
 
+/** Convite para a EQUIPE da Luvi (a pessoa cria a própria senha pelo link). */
+export function teamInviteEmail(input: { name: string; roleLabel: string; url: string; validityHours: number; resend?: boolean }): EmailContent {
+  const intro = input.resend ? "Aqui está um novo link" : "Você foi convidado(a)";
+  return {
+    subject: input.resend ? "Novo link de acesso ao painel Aprova Luvi" : "Seu acesso ao painel Aprova Luvi",
+    text: `Olá, ${input.name}!
+
+${intro} para acessar o painel do Aprova Luvi como ${input.roleLabel}, na equipe da Luvi Company.
+
+Crie a sua senha pelo link abaixo (vale por ${input.validityHours} horas e só pode ser usado uma vez):
+
+${input.url}
+
+Se você não esperava este e-mail, ignore-o: nada será ativado sem o seu clique.`,
+    html: layout(
+      input.resend ? "Novo link de acesso" : "Seu acesso ao painel",
+      `<p>Olá, ${escapeHtml(input.name)}!</p><p>${escapeHtml(intro)} para acessar o painel do <strong>Aprova Luvi</strong> como <strong>${escapeHtml(input.roleLabel)}</strong>, na equipe da Luvi Company.</p><p>O link vale por ${input.validityHours} horas e só pode ser usado uma vez.</p><p style="font-size:13px;color:#52525b">Se o botão não funcionar, copie este endereço no navegador:<br>${escapeHtml(input.url)}</p><p style="font-size:13px;color:#52525b">Se você não esperava este e-mail, ignore-o: nada será ativado sem o seu clique.</p>`,
+      { label: "Criar minha senha", href: input.url },
+    ),
+  };
+}
+
 /** Link rápido de aprovação (sem login). */
 export function approvalLinkEmail(input: { name: string; url: string; validityDays: number }): EmailContent {
   return {

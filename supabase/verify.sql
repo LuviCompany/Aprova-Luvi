@@ -100,7 +100,7 @@ where n.nspname in ('public', 'app')
   and (n.nspname || '.' || p.proname) not in (
     'public.decide_as_approver', 'public.create_approval_link', 'public.revoke_approval_link',
     'public.cancel_approval_request', 'public.link_approver_to_client', 'public.prepare_approver_invite',
-    'public.revoke_approver_invite', 'public.reorder_version_files', 'public.start_material_revision', 'public.submit_for_approval', 'app.my_role', 'app.my_org', 'app.is_staff', 'app.is_admin',
+    'public.revoke_approver_invite', 'public.add_team_member', 'public.reserve_team_invite_resend', 'public.reorder_version_files', 'public.start_material_revision', 'public.submit_for_approval', 'app.my_role', 'app.my_org', 'app.is_staff', 'app.is_admin',
     'app.can_manage_clients', 'app.staff_can_access', 'app.my_client_ids', 'app.my_approver_id',
     'app.version_was_sent', 'app.material_was_sent', 'app.material_visible_project', 'app.try_uuid'
   );

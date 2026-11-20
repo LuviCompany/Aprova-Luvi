@@ -42,7 +42,7 @@ No **seu Terminal** (a saída não é lida pelo assistente), com `SUPABASE_URL`,
 node scripts/bootstrap-admin.mjs --email voce@luvicompany.com.br --name "Seu Nome" --execute --allow-production --project-host <host-do-projeto>.supabase.co
 ```
 
-O link impresso é de uso único e vale como senha: abra você mesmo. **Depois disso, todo cliente e aprovador novo é cadastrado e convidado pelo painel** (Preparar convite → Enviar convite): nada de terminal.
+O link impresso é de uso único e vale como senha: abra você mesmo. **Outros administradores, designers e atendimento** são convidados depois pela tela **Usuários → Adicionar usuário** (só administrador; a pessoa cria a própria senha pelo e-mail; migration 17, `docs/PRODUCAO-BANCO.md` seção 6). **Depois disso, todo cliente e aprovador novo é cadastrado e convidado pelo painel** (Preparar convite → Enviar convite): nada de terminal.
 
 ## 5. Resend
 

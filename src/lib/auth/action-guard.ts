@@ -33,3 +33,22 @@ export async function authorizeStaff(options: { manageClients?: boolean } = {}):
 
   return { ok: true, user, supabase: await createSupabaseServerClient() };
 }
+
+/**
+ * Autoriza uma Server Action que SÓ o administrador ATIVO pode executar (convidar membros da equipe). Mesma garantia do
+ * authorizeStaff: sessão conferida de novo no servidor a cada chamada e cliente Supabase DO USUÁRIO (a RLS e as funções
+ * SQL do banco continuam sendo a segunda barreira). Designer, atendimento, cliente, inativo e demonstração são recusados.
+ */
+export async function authorizeAdmin(): Promise<GuardResult> {
+  if (isDemoMode()) return { ok: false, error: "Esta ação não está disponível na demonstração." };
+  if (!isSupabaseConfigured()) return { ok: false, error: MESSAGES.notConfigured };
+
+  const state = await getSessionState();
+  if (state.kind === "unavailable") return { ok: false, error: MESSAGES.network };
+  if (state.kind !== "ok") return { ok: false, error: "Sua sessão expirou. Entre novamente." };
+
+  const { user } = state;
+  if (user.role !== "admin") return { ok: false, error: DENIED };
+
+  return { ok: true, user, supabase: await createSupabaseServerClient() };
+}

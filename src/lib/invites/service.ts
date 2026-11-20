@@ -128,7 +128,7 @@ async function resend(
   return { ok: true, mode: "resent" };
 }
 
-function emailFailureMessage(reason: "not_configured" | "rate_limited" | "rejected" | "failed"): string {
+export function emailFailureMessage(reason: "not_configured" | "rate_limited" | "rejected" | "failed"): string {
   switch (reason) {
     case "not_configured":
       return "O envio de e-mail não está configurado neste ambiente.";
